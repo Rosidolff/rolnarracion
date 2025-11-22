@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faPlus, faTrash, faTimes, faChevronDown, faChevronRight, faPen, faSave
+    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faSave, faPlus, faBars, faFilter, faShareFromSquare, faMinus
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
@@ -28,18 +28,18 @@ export default function VaultManager() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Active Session Handling
+    // Active Session
     const [activeSession, setActiveSession] = useState<any>(null);
+
+    // Filter States
+    const [showFilters, setShowFilters] = useState(false);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'used' | 'burned'>('all');
+    const [subFilter, setSubFilter] = useState<string>('all');
 
     const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
         npc: true, scene: true, secret: true, location: true, monster: true, item: true
     });
     const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
-
-    const [newItemType, setNewItemType] = useState(ITEM_TYPES[0]);
-    const [newItemName, setNewItemName] = useState('');
-    const [newItemDesc, setNewItemDesc] = useState('');
-    const [newItemDetails, setNewItemDetails] = useState({ archetype: '', relationship: '', scene_type: 'explore', aspects: '' });
 
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editData, setEditData] = useState<any>({});
@@ -71,9 +71,7 @@ export default function VaultManager() {
             let sessId = camp.active_session;
             if (!sessId) {
                 const list = await api.sessions.list(id);
-                if (list.length > 0) {
-                    sessId = list.sort((a: any, b: any) => b.number - a.number)[0].id;
-                }
+                if (list.length > 0) sessId = list.sort((a: any, b: any) => b.number - a.number)[0].id;
             }
             if (sessId) {
                 const sess = await api.sessions.get(id, sessId);
@@ -82,19 +80,18 @@ export default function VaultManager() {
         } catch (e) { console.error(e); }
     };
 
-    const handleCreate = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!id || !newItemName.trim()) return;
+    const handleCreate = async (type: string) => {
+        if (!id) return;
+        const defaultContent: any = { name: `Nuevo ${type}`, title: `Nuevo ${type}`, description: "" };
+        if (type === 'npc') { defaultContent.archetype = ""; defaultContent.relationship = ""; }
+        else if (type === 'scene') { defaultContent.scene_type = "explore"; }
+        else if (type === 'location') { defaultContent.aspects = ""; }
 
-        const content: any = { name: newItemName, title: newItemName, description: newItemDesc };
-        if (newItemType === 'npc') { content.archetype = newItemDetails.archetype; content.relationship = newItemDetails.relationship; }
-        else if (newItemType === 'scene') { content.scene_type = newItemDetails.scene_type; }
-        else if (newItemType === 'location') { content.aspects = newItemDetails.aspects; }
-
-        await api.vault.create(id, { type: newItemType, content, tags: [] });
-        setNewItemName(''); setNewItemDesc('');
-        setNewItemDetails({ archetype: '', relationship: '', scene_type: 'explore', aspects: '' });
-        loadItems();
+        const newItem = await api.vault.create(id, { type, content: defaultContent, tags: [], usage_count: 0 });
+        await loadItems();
+        setEditingId(newItem.id);
+        setEditData(newItem);
+        if (filterType === 'all') setOpenGroups(prev => ({ ...prev, [type]: true }));
     };
 
     const handleDelete = async (itemId: string) => {
@@ -110,28 +107,38 @@ export default function VaultManager() {
         loadItems();
     };
 
-    const toggleItemActive = async (itemId: string) => {
-        if (!id || !activeSession) return;
+    const toggleSessionItem = async (itemId: string) => {
+        if (!id || !activeSession) {
+            alert("No hay sesión activa detectada para vincular.");
+            return;
+        }
+
         const isLinked = activeSession.linked_items?.includes(itemId);
         let newLinked;
-        
-        // Toggle logic matches SessionRunner
+        let newStatus;
+
         if (isLinked) {
+            // Desvincular (sacar de sesión)
             newLinked = activeSession.linked_items.filter((i: string) => i !== itemId);
-            await api.vault.update(id, itemId, { status: 'reserve' });
+            newStatus = 'reserve';
         } else {
-            // Should typically not happen here (Activation usually via session), but logic allows it
+            // Vincular (meter en sesión)
             newLinked = [...(activeSession.linked_items || []), itemId];
-            await api.vault.update(id, itemId, { status: 'active' });
+            newStatus = 'active';
         }
-        
+
+        // Actualizar Sesión
         const updatedSession = { ...activeSession, linked_items: newLinked };
         await api.sessions.update(id, activeSession.id, updatedSession);
         setActiveSession(updatedSession);
+
+        // Actualizar Item en Vault
+        await api.vault.update(id, itemId, { status: newStatus });
         loadItems();
     };
 
     const startEditing = (item: any) => { setEditingId(item.id); setEditData(JSON.parse(JSON.stringify(item))); };
+    
     const updateEditContent = (field: string, value: string) => {
         const newContent = { ...editData.content, [field]: value };
         if (field === 'name') newContent.title = value;
@@ -139,47 +146,60 @@ export default function VaultManager() {
         setEditData({ ...editData, content: newContent });
     };
 
-    const renderCreateFields = () => {
-        const inputClass = "bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs w-24 focus:border-blue-500 outline-none";
-        switch (newItemType) {
-            case 'npc': return <><input placeholder="Arquetipo" value={newItemDetails.archetype} onChange={e => setNewItemDetails({...newItemDetails, archetype: e.target.value})} className={inputClass} /><input placeholder="Relación" value={newItemDetails.relationship} onChange={e => setNewItemDetails({...newItemDetails, relationship: e.target.value})} className={inputClass} /></>;
-            case 'scene': return <select value={newItemDetails.scene_type} onChange={e => setNewItemDetails({...newItemDetails, scene_type: e.target.value})} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"><option value="explore">Exploración</option><option value="social">Social</option><option value="combat">Combate</option></select>;
-            case 'location': return <input placeholder="Aspectos" value={newItemDetails.aspects} onChange={e => setNewItemDetails({...newItemDetails, aspects: e.target.value})} className={`${inputClass} w-48`} />;
-            default: return null;
-        }
-    };
-
     const renderEditInputs = (type: string) => {
         switch (type) {
             case 'npc': return <><input value={editData.content.archetype || ''} onChange={e => updateEditContent('archetype', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs w-32 text-yellow-200" placeholder="Arquetipo" /><input value={editData.content.relationship || ''} onChange={e => updateEditContent('relationship', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs w-32 text-blue-200" placeholder="Relación" /></>;
-            case 'scene': return <select value={editData.content.scene_type || 'explore'} onChange={e => updateEditContent('scene_type', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-purple-200"><option value="explore">Explore</option><option value="social">Social</option><option value="combat">Combat</option></select>;
+            case 'scene': return <select value={editData.content.scene_type || 'explore'} onChange={e => updateEditContent('scene_type', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-purple-200"><option value="explore">Explore</option><option value="social">Social</option><option value="combat">Combate</option></select>;
             case 'location': return <input value={editData.content.aspects || ''} onChange={e => updateEditContent('aspects', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs w-48 text-green-200" placeholder="Aspectos" />;
             default: return null;
         }
     };
 
+    const getItemStatus = (item: any) => {
+        if (item.status === 'archived') return 'burned';
+        if ((item.usage_count || 0) > 0) return 'used';
+        return 'new';
+    };
+
     const ReadOnlyItemRow = ({ item }: any) => {
         const isExpanded = expandedItems[item.id];
         const name = item.content.name || item.content.title || "Sin nombre";
+        const status = getItemStatus(item);
+        // Comprobamos si está en la sesión activa actual
+        const inSession = activeSession?.linked_items?.includes(item.id);
+
         return (
             <div className="flex items-center gap-3 min-h-[1.5rem]">
-                <div className="flex-shrink-0"><button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="text-gray-700 hover:text-red-500 transition-colors p-1"><FontAwesomeIcon icon={faTrash} size="xs" /></button></div>
+                <div className="flex-shrink-0 flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="text-gray-700 hover:text-red-500 p-1 transition-colors" title="Eliminar">
+                        <FontAwesomeIcon icon={faTrash} size="xs" />
+                    </button>
+                    {/* Botón Toggle Sesión */}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); toggleSessionItem(item.id); }} 
+                        className={`p-1 transition-colors ${inSession ? 'text-red-400 hover:text-red-300' : 'text-gray-600 hover:text-blue-400'}`}
+                        title={inSession ? "Quitar de Sesión Activa" : "Añadir a Sesión Activa"}
+                    >
+                        <FontAwesomeIcon icon={inSession ? faMinus : faShareFromSquare} size="xs" />
+                    </button>
+                </div>
+
                 <div className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !p[item.id] }))}>
-                    <span className="font-bold text-white hover:text-blue-400 transition-colors mr-2 inline-flex items-center gap-1 align-baseline" onClick={(e) => { e.stopPropagation(); startEditing(item); }}>{name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" /></span>
+                    <span className="font-bold text-gray-200 hover:text-blue-400 transition-colors mr-2 inline-flex items-center gap-1 align-baseline" onClick={(e) => { e.stopPropagation(); startEditing(item); }}>
+                        {name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" />
+                    </span>
                     {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[11px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[11px] mr-2">{item.content.relationship}</span>}</>}
                     {item.type === 'scene' && item.content.scene_type && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
                     {item.type === 'location' && item.content.aspects && <span className="text-green-400 font-mono text-[11px] mr-2">[{item.content.aspects}]</span>}
                     <span className="text-gray-600 mr-2">-</span><span className="text-gray-400">{item.content.description}</span>
                 </div>
-                {item.status === 'active' && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); toggleItemActive(item.id); }}
-                        className="flex-shrink-0 text-[9px] bg-green-900 text-green-100 px-1 py-0 rounded uppercase font-bold tracking-wider leading-none hover:bg-red-900 hover:text-red-100 cursor-pointer transition-colors"
-                        title="Click para Desactivar"
-                    >
-                        ACTIVO
-                    </button>
-                )}
+                
+                <div className="flex-shrink-0 flex items-center gap-2">
+                    {inSession && <span className="text-[9px] bg-green-900 text-green-100 px-1 py-0 rounded uppercase font-bold tracking-wider">EN SESIÓN</span>}
+                    {!inSession && status === 'burned' && <span className="text-[9px] bg-red-900/50 text-red-300 px-1 py-0 rounded uppercase font-bold tracking-wider">QUEMADO</span>}
+                    {!inSession && status === 'used' && <span className="text-[9px] bg-blue-900/50 text-blue-300 px-1 py-0 rounded uppercase font-bold tracking-wider">USADO</span>}
+                    {!inSession && status === 'new' && <span className="text-[9px] bg-yellow-900/50 text-yellow-300 px-1 py-0 rounded uppercase font-bold tracking-wider">NUEVO</span>}
+                </div>
             </div>
         );
     };
@@ -209,57 +229,67 @@ export default function VaultManager() {
 
     const searchFilteredItems = items.filter(item => {
         const text = (item.content.name || item.content.title || '').toLowerCase() + (item.content.description || '').toLowerCase();
-        return text.includes(searchQuery.toLowerCase());
+        if (!text.includes(searchQuery.toLowerCase())) return false;
+
+        const status = getItemStatus(item);
+        if (statusFilter !== 'all' && status !== statusFilter) return false;
+
+        if (subFilter !== 'all' && item.type === 'scene' && item.content.scene_type !== subFilter) return false;
+
+        return true;
     });
 
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-gray-300 font-sans">
-            {id && <TopNavBar campaignId={id} activeTab={filterType} onTabChange={setFilterType} onToggleInfo={() => setIsSidebarOpen(true)} searchQuery={searchQuery} onSearchChange={setSearchQuery} />}
+            {id && <TopNavBar 
+                campaignId={id} 
+                activeTab={filterType} 
+                onTabChange={(tab) => { setFilterType(tab); setSubFilter('all'); }} 
+                onToggleInfo={() => setIsSidebarOpen(true)} 
+                searchQuery={searchQuery} 
+                onSearchChange={setSearchQuery}
+                onAdd={() => handleCreate(filterType)} 
+                showFilters={showFilters}
+                onToggleFilters={() => setShowFilters(!showFilters)}
+                filterStatus={statusFilter}
+                onFilterStatusChange={(val) => setStatusFilter(val as any)}
+                filterSub={subFilter}
+                onFilterSubChange={setSubFilter}
+            />}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                {/* Quick Add */}
-                <form onSubmit={handleCreate} className="flex flex-wrap gap-2 mb-4 bg-gray-800 p-2 rounded border border-gray-700 items-center text-sm shadow-sm">
-                    <div className="text-blue-500 px-1"><FontAwesomeIcon icon={faPlus} /></div>
-                    <select value={newItemType} onChange={(e) => setNewItemType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs uppercase font-bold text-white focus:outline-none focus:border-blue-500">
-                        {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input type="text" placeholder="Nombre" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} className="flex-1 min-w-[120px] bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500" />
-                    {renderCreateFields()}
-                    <input type="text" placeholder="Descripción..." value={newItemDesc} onChange={(e) => setNewItemDesc(e.target.value)} className="flex-[2] min-w-[150px] bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500" />
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold text-xs">Add</button>
-                </form>
-
-                {/* List Content */}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-900">
                 <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
                     {ITEM_TYPES.map(type => {
                         if (filterType !== 'all' && filterType !== type) return null;
                         const groupItems = searchFilteredItems.filter(i => i.type === type);
-                        if (groupItems.length === 0) return null;
+                        const isFilteredView = filterType !== 'all';
                         
-                        // Si hay filtro, NO mostrar acordeón (lista directa). Si es 'todos', mostrar acordeón.
-                        const showAccordion = filterType === 'all';
-
                         const content = (
-                            <div className={showAccordion ? "bg-gray-800" : ""}>
+                            <div className={filterType === 'all' ? "bg-gray-800" : ""}>
                                 {groupItems.map(item => renderItemRow(item))}
+                                {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos.</div>}
                             </div>
                         );
 
-                        if (!showAccordion) return <div key={type}>{content}</div>;
+                        if (isFilteredView) return <div key={type}>{content}</div>;
 
                         return (
                             <div key={type} className="border-b border-gray-700 last:border-0">
-                                <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner">
+                                <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
                                     <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
                                     <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{type}s</span>
-                                    <span className="text-[10px] text-gray-300 ml-auto bg-gray-600 px-2 py-0.5 rounded-full">({groupItems.length})</span>
+                                    <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
+                                    
+                                    {filterType === 'all' && (
+                                        <button onClick={(e) => { e.stopPropagation(); handleCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
+                                    )}
                                 </div>
                                 {openGroups[type] && content}
                             </div>
                         );
                     })}
-                    {searchFilteredItems.length === 0 && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos coincidentes.</div>}
+                    {searchFilteredItems.length === 0 && filterType === 'all' && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos coincidentes.</div>}
                 </div>
             </div>
         </div>

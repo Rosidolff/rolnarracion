@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faSkull } from '@fortawesome/free-solid-svg-icons';
 import { Link, useNavigate } from 'react-router-dom';
 
 interface CampaignSidebarProps {
@@ -10,36 +10,46 @@ interface CampaignSidebarProps {
     campaignId: string;
 }
 
-const PLACEHOLDERS_TRUTHS = [
-    "Verdad Social/Económica",
-    "Verdad Política/Amenaza interna",
-    "Verdad de amenaza Externa",
-    "Verdad Cosmológica",
-    "Verdad Histórica",
-    "Otra verdad"
-];
+const PLACEHOLDERS_TRUTHS = ["Verdad Social/Económica", "Verdad Política/Amenaza interna", "Verdad de amenaza Externa", "Verdad Cosmológica", "Verdad Histórica", "Otra verdad"];
 
-// Componente simple para Tags (Moods)
-const TagInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
-    const tags = value.split(',').map(t => t.trim()).filter(t => t);
-    
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onChange(e.target.value);
+const MoodsEditor = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
+    const [inputValue, setInputValue] = useState("");
+    // Parseamos tags de forma segura
+    const tags = value ? value.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    const removeTag = (index: number) => {
+        const newTags = [...tags];
+        newTags.splice(index, 1);
+        onChange(newTags.join(','));
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            if (inputValue.trim()) {
+                const newTags = [...tags, inputValue.trim()];
+                onChange(newTags.join(','));
+                setInputValue("");
+            }
+        } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
+            removeTag(tags.length - 1);
+        }
     };
 
     return (
         <div className="w-full bg-gray-800 border border-gray-700 rounded p-1.5 flex flex-wrap gap-1 focus-within:border-pink-500/50 transition-colors">
             {tags.map((tag, i) => (
-                <span key={i} className="bg-pink-900/30 text-pink-300 text-[10px] px-1.5 py-0.5 rounded border border-pink-800/50">
-                    {tag}
+                <span key={i} className="bg-pink-900/30 text-pink-300 text-[10px] px-2 py-0.5 rounded border border-pink-800/50 flex items-center gap-1">
+                    {tag} <button onClick={() => removeTag(i)} className="hover:text-white"><FontAwesomeIcon icon={faTimes} size="xs"/></button>
                 </span>
             ))}
             <input 
                 className="flex-1 bg-transparent text-sm text-gray-200 outline-none min-w-[80px] px-1"
-                value={value}
-                onChange={handleChange}
-                onBlur={handleChange} // Ensure triggered
-                placeholder={tags.length === 0 ? placeholder : ""}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => { if(inputValue.trim()) { onChange([...tags, inputValue.trim()].join(',')); setInputValue(""); } }}
+                placeholder={tags.length === 0 ? "Añadir moods..." : ""}
             />
         </div>
     );
@@ -72,26 +82,23 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         const truths = meta.truths || [];
         while (truths.length < 6) truths.push("");
         setMetadata({ ...meta, truths: truths.slice(0, 6) });
-
         const sess = await api.sessions.list(campaignId);
+        // Orden descendente para ver la última primero en la cronología
         setSessions(sess.sort((a: any, b: any) => b.number - a.number));
     };
 
-    // Auto-save function
     const persistChanges = async (newData: any) => {
         if (!newData) return;
-        setMetadata(newData); // Update UI immediately
-        await api.campaigns.update(campaignId, newData); // Background save
+        setMetadata(newData);
+        await api.campaigns.update(campaignId, newData);
     };
 
     const updateField = (field: string, value: any) => {
         const newData = { ...metadata, [field]: value };
-        setMetadata(newData); // UI update for typing
+        setMetadata(newData);
     };
 
-    const handleBlur = () => {
-        persistChanges(metadata);
-    };
+    const handleBlur = () => { persistChanges(metadata); };
 
     const updateTruth = (index: number, val: string) => {
         const newTruths = [...metadata.truths];
@@ -99,6 +106,7 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         updateField('truths', newTruths);
     };
 
+    // --- FRONTS LOGIC ---
     const updateFront = (index: number, field: string, val: string) => {
         const newFronts = [...(metadata.fronts || [])];
         newFronts[index] = { ...newFronts[index], [field]: val };
@@ -106,16 +114,23 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
     };
     
     const addFront = () => {
-        const newFronts = [...(metadata.fronts || []), { name: '', goal: '', grim_portents: [] }];
-        const newData = { ...metadata, fronts: newFronts };
-        persistChanges(newData);
+        const newFronts = [...(metadata.fronts || []), { name: '', goal: '', grim_portents: ["", "", ""] }];
+        persistChanges({ ...metadata, fronts: newFronts });
     };
 
     const removeFront = (index: number) => {
         const newFronts = [...(metadata.fronts || [])];
         newFronts.splice(index, 1);
-        const newData = { ...metadata, fronts: newFronts };
-        persistChanges(newData);
+        persistChanges({ ...metadata, fronts: newFronts });
+    };
+
+    const updateGrimPortent = (frontIndex: number, portentIndex: number, val: string) => {
+        const newFronts = [...(metadata.fronts || [])];
+        // Asegurar que existe el array
+        const portents = [...(newFronts[frontIndex].grim_portents || ["", "", ""])];
+        portents[portentIndex] = val;
+        newFronts[frontIndex].grim_portents = portents;
+        updateField('fronts', newFronts);
     };
 
     const setActiveSession = async (sessionId: string) => {
@@ -133,34 +148,20 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
             {isOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}></div>}
             
             <div className={`fixed top-0 left-0 h-full w-96 bg-gray-900 border-r border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                
                 <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900">
                     <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest">Info Campaña</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-white">
-                        <FontAwesomeIcon icon={faTimes} />
-                    </button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
-                    
                     <section>
                         <h3 className="text-xs font-bold text-yellow-500 uppercase mb-2">Core Concept</h3>
-                        <AutoResizeTextarea 
-                            value={metadata?.elevator_pitch || ''} 
-                            onChange={(e: any) => updateField('elevator_pitch', e.target.value)}
-                            onBlur={handleBlur}
-                            placeholder="El gancho principal..."
-                            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-yellow-500/50 outline-none resize-none"
-                        />
+                        <AutoResizeTextarea value={metadata?.elevator_pitch || ''} onChange={(e: any) => updateField('elevator_pitch', e.target.value)} onBlur={handleBlur} placeholder="El gancho principal..." className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-yellow-500/50 outline-none resize-none" />
                     </section>
 
                     <section>
                         <h3 className="text-xs font-bold text-pink-500 uppercase mb-2">Moods</h3>
-                        <TagInput 
-                            value={metadata?.moods || ''}
-                            onChange={(val) => { updateField('moods', val); persistChanges({...metadata, moods: val}); }}
-                            placeholder="Ej: Terror, Comedia (separar por comas)"
-                        />
+                        <MoodsEditor value={metadata?.moods || ''} onChange={(val) => { updateField('moods', val); persistChanges({...metadata, moods: val}); }} />
                     </section>
 
                     <section>
@@ -168,26 +169,23 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                             <h3 className="text-xs font-bold text-red-500 uppercase">Fronts</h3>
                             <button onClick={addFront} className="text-gray-500 hover:text-green-400"><FontAwesomeIcon icon={faPlus} size="xs"/></button>
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             {metadata?.fronts?.map((f: any, i: number) => (
-                                <div key={i} className="bg-gray-800/50 p-2 rounded border border-gray-700/50">
-                                    <div className="flex gap-2 mb-1">
-                                        <input 
-                                            value={f.name} 
-                                            onChange={(e) => updateFront(i, 'name', e.target.value)}
-                                            onBlur={handleBlur}
-                                            placeholder="Nombre Amenaza"
-                                            className="bg-transparent border-b border-gray-700 w-full text-sm font-bold text-gray-200 focus:border-red-500 outline-none"
-                                        />
+                                <div key={i} className="bg-gray-800/50 p-3 rounded border border-gray-700/50">
+                                    <div className="flex gap-2 mb-2 items-center">
+                                        <input value={f.name} onChange={(e) => updateFront(i, 'name', e.target.value)} onBlur={handleBlur} placeholder="Nombre Amenaza" className="bg-transparent border-b border-gray-600 w-full text-sm font-bold text-gray-200 focus:border-red-500 outline-none" />
                                         <button onClick={() => removeFront(i)} className="text-gray-600 hover:text-red-500"><FontAwesomeIcon icon={faTrash} size="xs"/></button>
                                     </div>
-                                    <input 
-                                        value={f.goal} 
-                                        onChange={(e) => updateFront(i, 'goal', e.target.value)}
-                                        onBlur={handleBlur}
-                                        placeholder="Objetivo..."
-                                        className="bg-transparent w-full text-xs text-gray-400 focus:text-gray-200 outline-none"
-                                    />
+                                    <input value={f.goal} onChange={(e) => updateFront(i, 'goal', e.target.value)} onBlur={handleBlur} placeholder="Objetivo..." className="bg-transparent w-full text-xs text-gray-400 focus:text-gray-200 outline-none mb-2 italic" />
+                                    
+                                    <div className="space-y-1 pl-2 border-l-2 border-red-900/30">
+                                        {(f.grim_portents || ["", "", ""]).map((gp: string, gpIndex: number) => (
+                                            <div key={gpIndex} className="flex items-center gap-2">
+                                                <FontAwesomeIcon icon={faSkull} className="text-[8px] text-red-800" />
+                                                <input value={gp} onChange={(e) => updateGrimPortent(i, gpIndex, e.target.value)} onBlur={handleBlur} placeholder={`Evento ${gpIndex + 1}`} className="bg-transparent w-full text-[10px] text-gray-300 outline-none hover:bg-gray-800/50 rounded px-1" />
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                             {(!metadata?.fronts || metadata.fronts.length === 0) && <p className="text-xs text-gray-600 italic">Sin frentes activos.</p>}
@@ -200,22 +198,14 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                             {metadata?.truths?.map((t: string, i: number) => (
                                 <li key={i} className="flex gap-2 items-start">
                                     <span className="text-xs text-gray-600 font-mono mt-1">{i+1}.</span>
-                                    <AutoResizeTextarea
-                                        value={t}
-                                        onChange={(e: any) => updateTruth(i, e.target.value)}
-                                        onBlur={handleBlur}
-                                        placeholder={PLACEHOLDERS_TRUTHS[i]}
-                                        className="flex-1 bg-transparent border-b border-gray-800 hover:border-gray-700 focus:border-blue-500 outline-none text-sm text-gray-300 resize-none"
-                                    />
+                                    <AutoResizeTextarea value={t} onChange={(e: any) => updateTruth(i, e.target.value)} onBlur={handleBlur} placeholder={PLACEHOLDERS_TRUTHS[i]} className="flex-1 bg-transparent border-b border-gray-800 hover:border-gray-700 focus:border-blue-500 outline-none text-sm text-gray-300 resize-none" />
                                 </li>
                             ))}
                         </ul>
                     </section>
 
                     <section className="pt-4 border-t border-gray-800">
-                         <h3 className="text-xs font-bold text-green-500 uppercase mb-3 flex items-center gap-2">
-                            <FontAwesomeIcon icon={faHistory} /> Cronología
-                         </h3>
+                         <h3 className="text-xs font-bold text-green-500 uppercase mb-3 flex items-center gap-2"><FontAwesomeIcon icon={faHistory} /> Cronología</h3>
                          <div className="space-y-2">
                             {sessions.length === 0 ? (
                                 <p className="text-xs text-gray-600 italic">No hay sesiones registradas.</p>
@@ -225,18 +215,10 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                     return (
                                         <div key={s.id} className="flex items-center justify-between group bg-gray-800/30 p-2 rounded border border-transparent hover:border-gray-700">
                                             <div className="cursor-pointer flex-1" onClick={() => goToSession(s.id)}>
-                                                <div className="text-xs font-bold text-gray-300 group-hover:text-green-400">
-                                                    Sesión #{s.number} {s.status === 'completed' && <span className="text-[9px] text-gray-500 font-normal">(Comp.)</span>}
-                                                </div>
+                                                <div className="text-xs font-bold text-gray-300 group-hover:text-green-400">Sesión #{s.number} {s.status === 'completed' && <span className="text-[9px] text-gray-500 font-normal">(Comp.)</span>}</div>
                                                 <div className="text-[10px] text-gray-500">{new Date(s.date).toLocaleDateString()}</div>
                                             </div>
-                                            <button 
-                                                onClick={() => setActiveSession(s.id)} 
-                                                className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`}
-                                                title={isActive ? "Sesión Activa" : "Marcar como Activa"}
-                                            >
-                                                <FontAwesomeIcon icon={isActive ? faStar : faCheck} />
-                                            </button>
+                                            <button onClick={() => setActiveSession(s.id)} className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`} title={isActive ? "Sesión Activa" : "Marcar como Activa"}><FontAwesomeIcon icon={isActive ? faStar : faCheck} /></button>
                                         </div>
                                     );
                                 })

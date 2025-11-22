@@ -21,6 +21,9 @@ def list_vault_items(campaign_id):
             if filename.endswith(".json"):
                 item = service.load_json(os.path.join(vault_path, filename))
                 if item:
+                    # Asegurar que usage_count existe para items antiguos
+                    if 'usage_count' not in item:
+                        item['usage_count'] = 0
                     items.append(item)
     
     return jsonify(items)
@@ -39,6 +42,7 @@ def create_vault_item(campaign_id):
         "id": item_id,
         "type": item_type,
         "status": "reserve",
+        "usage_count": 0, # Nuevo campo para seguimiento
         "tags": data.get('tags', []),
         "content": data.get('content', {})
     }
@@ -56,11 +60,6 @@ def update_vault_item(campaign_id, item_id):
     service = get_file_service()
     campaign_path = service._get_campaign_path(campaign_id)
     vault_path = os.path.join(campaign_path, "vault")
-    
-    # Find the file (we don't know the type prefix easily without searching or passing it)
-    # But the user should probably pass the type or we search.
-    # For simplicity, let's assume we search or the ID is unique enough.
-    # Actually, the spec says filename is {type}_{uuid}.json.
     
     target_file = None
     for filename in os.listdir(vault_path):
@@ -81,6 +80,8 @@ def update_vault_item(campaign_id, item_id):
         current_item['tags'] = data['tags']
     if 'content' in data:
         current_item['content'] = data['content']
+    if 'usage_count' in data:
+        current_item['usage_count'] = data['usage_count']
         
     service.save_json(file_path, current_item)
     return jsonify(current_item)
