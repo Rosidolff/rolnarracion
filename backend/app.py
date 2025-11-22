@@ -1,0 +1,23 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
+import os
+from routes.campaign_routes import campaign_bp
+from routes.vault_routes import vault_bp
+from routes.session_routes import session_bp
+
+app = Flask(__name__)
+CORS(app)
+
+DATA_STORAGE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data_storage'))
+app.config['DATA_STORAGE_PATH'] = DATA_STORAGE_PATH
+
+app.register_blueprint(campaign_bp, url_prefix='/api/campaigns')
+app.register_blueprint(vault_bp, url_prefix='/api/campaigns')
+app.register_blueprint(session_bp, url_prefix='/api/campaigns')
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "storage_path": DATA_STORAGE_PATH})
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

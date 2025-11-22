@@ -1,4 +1,4 @@
-# Especificaciones Técnicas: The Lazy DM Vault (v1.0)
+d# Especificaciones Técnicas: The Lazy DM Vault (v1.0)
 
 ## 1. Visión del Producto
 

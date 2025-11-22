@@ -1,31 +1,42 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.env
-.venv
-env/
-ENV/
+# General
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.sqlite3
 
-# Node.js
-node_modules/
-dist/
+# Python / Backend
+backend/venv/
+backend/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+__pycache__/
+
+# Flask
+instance/
+.webassets-cache
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project Specific
+# Data Storage (Local DB)
 data_storage/
-!data_storage/.gitkeep
+
+# Environment Variables
+.env
