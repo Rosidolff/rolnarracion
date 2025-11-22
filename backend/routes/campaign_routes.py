@@ -24,17 +24,17 @@ def create_campaign():
     service = get_file_service()
     campaign_id = generate_id()
     
-    # Create structure
     base_path = service.create_campaign_structure(campaign_id)
     
-    # Create metadata
     metadata = {
         "id": campaign_id,
         "title": data['title'],
         "elevator_pitch": data.get('elevator_pitch', ''),
+        "moods": data.get('moods', ''),
         "truths": data.get('truths', []),
         "fronts": data.get('fronts', []),
-        "safety_tools": data.get('safety_tools', '')
+        "safety_tools": data.get('safety_tools', ''),
+        "active_session": None
     }
     
     service.save_json(os.path.join(base_path, "metadata.json"), metadata)
@@ -63,8 +63,7 @@ def update_campaign(campaign_id):
     if not current_metadata:
         return jsonify({"error": "Campaign not found"}), 404
         
-    # Update fields
-    fields = ['title', 'elevator_pitch', 'truths', 'fronts', 'safety_tools']
+    fields = ['title', 'elevator_pitch', 'moods', 'truths', 'fronts', 'safety_tools', 'active_session']
     for field in fields:
         if field in data:
             current_metadata[field] = data[field]
