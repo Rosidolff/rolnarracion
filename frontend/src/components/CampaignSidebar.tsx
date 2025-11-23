@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faSkull, faCircle } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faCircle, faUser, faLevelUpAlt } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
 interface CampaignSidebarProps {
@@ -68,6 +68,7 @@ const AutoResizeTextarea = ({ value, onChange, onBlur, placeholder, className }:
 export default function CampaignSidebar({ isOpen, onClose, campaignId }: CampaignSidebarProps) {
     const [metadata, setMetadata] = useState<any>(null);
     const [sessions, setSessions] = useState<any[]>([]);
+    const [characters, setCharacters] = useState<any[]>([]);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -91,6 +92,9 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         setMetadata({ ...meta, truths: truths.slice(0, 6), fronts });
         const sess = await api.sessions.list(campaignId);
         setSessions(sess.sort((a: any, b: any) => b.number - a.number));
+
+        const vault = await api.vault.list(campaignId);
+        setCharacters(vault.filter((i:any) => i.type === 'character'));
     };
 
     const persistChanges = async (newData: any) => {
@@ -192,12 +196,37 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
             {isOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}></div>}
             
             <div className={`fixed top-0 left-0 h-full w-96 bg-gray-900 border-r border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900">
-                    <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest truncate pr-4">{metadata?.title || "Campaña"}</h2>
+                <div className="flex justify-between items-start p-4 border-b border-gray-800 bg-gray-900">
+                    <div className="flex-1 pr-2">
+                        <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest truncate mb-1">{metadata?.title || "Campaña"}</h2>
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-yellow-500 font-bold flex items-center gap-1"><FontAwesomeIcon icon={faLevelUpAlt} /> NIVEL</span>
+                            <input 
+                                className="bg-gray-800 border border-gray-700 rounded px-1 w-10 text-center text-yellow-400 font-bold outline-none focus:border-yellow-500"
+                                value={metadata?.level || 1}
+                                onChange={(e) => updateField('level', e.target.value)}
+                                onBlur={handleBlur}
+                            />
+                        </div>
+                    </div>
                     <button onClick={onClose} className="text-gray-500 hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+                    
+                    <section>
+                        <h3 className="text-xs font-bold text-orange-500 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faUser} /> Personajes</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {characters.map(char => (
+                                <div key={char.id} className="text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded border border-gray-700 flex items-center gap-1">
+                                    <span className="font-bold text-orange-300">{char.content.name}</span>
+                                    <span className="text-gray-500">({char.content.class})</span>
+                                </div>
+                            ))}
+                            {characters.length === 0 && <p className="text-xs text-gray-600 italic">Sin personajes.</p>}
+                        </div>
+                    </section>
+
                     <section>
                         <h3 className="text-xs font-bold text-yellow-500 uppercase mb-2">Eje Conceptual</h3>
                         <AutoResizeTextarea value={metadata?.elevator_pitch || ''} onChange={(e: any) => updateField('elevator_pitch', e.target.value)} onBlur={handleBlur} placeholder="El gancho principal..." className="w-full bg-transparent border-b border-gray-800 hover:border-gray-700 focus:border-yellow-500 outline-none text-sm text-gray-300 resize-none" />

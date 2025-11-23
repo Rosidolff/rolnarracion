@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faBoxOpen, faDiceD20, faInfoCircle, faSearch, faSignOutAlt, faPlus, faFilter
+    faBoxOpen, faDiceD20, faInfoCircle, faSearch, faSignOutAlt, faPlus, faFilter, faUser
 } from '@fortawesome/free-solid-svg-icons';
 import { api } from '../services/api';
 
@@ -24,9 +24,10 @@ interface TopNavBarProps {
     onFilterSubChange?: (val: string) => void;
 }
 
-const ITEM_TYPES = ["npc", "scene", "secret", "location", "monster", "item"];
+const ITEM_TYPES = ["character", "npc", "scene", "secret", "location", "monster", "item"];
 
 const TYPE_LABELS: Record<string, string> = {
+    character: "PJs",
     npc: "NPCS",
     scene: "ESCENAS",
     secret: "SECRETOS",
@@ -69,16 +70,35 @@ export default function TopNavBar({
                 <span className="text-[10px] font-bold uppercase mt-1">Info</span>
             </button>
 
-            <div className="flex-1 grid grid-cols-4 sm:grid-cols-8 gap-1 mr-2 min-w-0">
+            <div className="flex-1 grid grid-cols-4 sm:grid-cols-9 gap-1 mr-2 min-w-0">
                 <button onClick={() => onTabChange('all')} className={`col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ${activeTab === 'all' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>Todos</button>
-                {ITEM_TYPES.map(type => (
-                    <button key={type} onClick={() => onTabChange(type)} className={`col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ${activeTab === type ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                        {TYPE_LABELS[type]}
-                    </button>
-                ))}
-                
-                <div className="col-span-full sm:col-span-3 relative h-full max-h-[1.5rem] flex gap-1">
+                {ITEM_TYPES.map(type => {
+                    const isChar = type === 'character';
+                    const isActive = activeTab === type;
                     
+                    // Lógica de clases dinámica
+                    let baseClasses = "col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ";
+                    
+                    if (isActive) {
+                        baseClasses += isChar 
+                            ? 'bg-orange-600 border-orange-500 text-white' 
+                            : 'bg-blue-600 border-blue-500 text-white';
+                    } else {
+                        // AQUÍ CAMBIAMOS: Si es character y no está activo, texto naranja
+                        baseClasses += isChar 
+                            ? 'bg-gray-800 border-gray-700 text-orange-500 hover:bg-gray-700 hover:text-orange-400' 
+                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white';
+                    }
+
+                    return (
+                        <button key={type} onClick={() => onTabChange(type)} className={baseClasses}>
+                            {isChar && <FontAwesomeIcon icon={faUser} className="mr-1" />}
+                            {TYPE_LABELS[type]}
+                        </button>
+                    );
+                })}
+                
+                <div className="col-span-full sm:col-span-2 relative h-full max-h-[1.5rem] flex gap-1">
                     {onToggleFilters && !extraTabs.length && (
                         <button onClick={onToggleFilters} className={`h-full aspect-square rounded flex items-center justify-center transition-colors border ${showFilters ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`} title="Filtros">
                             <FontAwesomeIcon icon={faFilter} size="xs" />
