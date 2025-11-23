@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faCircle, faUser, faLevelUpAlt, faBook } from '@fortawesome/free-solid-svg-icons';
+import { 
+    faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faCircle, 
+    faUser, faLevelUpAlt, faBook, faGlobe, faChevronDown, faChevronUp, faToggleOn, faToggleOff, faCompressAlt
+} from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
 interface CampaignSidebarProps {
@@ -69,6 +72,7 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
     const [metadata, setMetadata] = useState<any>(null);
     const [sessions, setSessions] = useState<any[]>([]);
     const [characters, setCharacters] = useState<any[]>([]);
+    const [showFramework, setShowFramework] = useState(false); 
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -91,7 +95,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
 
         setMetadata({ ...meta, truths: truths.slice(0, 6), fronts });
         const sess = await api.sessions.list(campaignId);
-        // Ordenar: más recientes arriba
         setSessions(sess.sort((a: any, b: any) => b.number - a.number));
 
         const vault = await api.vault.list(campaignId);
@@ -165,7 +168,7 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
 
     const goToSession = (session: any) => {
         if (session.status === 'completed') {
-            navigate(`/campaign/${campaignId}/bitacora`); // Ir a bitácora para ver resumen
+            navigate(`/campaign/${campaignId}/bitacora`);
         } else {
             navigate(`/campaign/${campaignId}/sessions`, { state: { sessionId: session.id } });
         }
@@ -350,6 +353,77 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                             )}
                          </div>
                     </section>
+
+                    {/* --- SECCIÓN FRAMEWORK MUNDIAL (AL FINAL) --- */}
+                    <section className="pt-4 border-t border-gray-800 pb-10">
+                        <div 
+                            className="flex justify-between items-center mb-2 cursor-pointer group select-none" 
+                            onClick={() => setShowFramework(!showFramework)}
+                        >
+                            <h3 className="text-xs font-bold text-cyan-500 uppercase flex items-center gap-2">
+                                <FontAwesomeIcon icon={faGlobe} /> Framework Mundial
+                            </h3>
+                            <FontAwesomeIcon 
+                                icon={showFramework ? faChevronUp : faChevronDown} 
+                                className="text-gray-600 group-hover:text-white transition-colors text-xs" 
+                            />
+                        </div>
+                        
+                        {/* Contenedor colapsable */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out space-y-4 ${showFramework ? 'max-h-[2000px] opacity-100 pt-2' : 'max-h-0 opacity-0'}`}>
+                            
+                            {/* Control para la IA */}
+                            <div className="flex items-center justify-between bg-gray-800/30 p-2 rounded border border-gray-700">
+                                <span className="text-[10px] text-gray-400">Enviar a la IA:</span>
+                                <button 
+                                    onClick={() => {
+                                        const newVal = !metadata?.use_full_framework;
+                                        updateField('use_full_framework', newVal);
+                                        persistChanges({ ...metadata, use_full_framework: newVal });
+                                    }}
+                                    className="flex items-center gap-2 text-xs font-bold focus:outline-none"
+                                >
+                                    <span className={metadata?.use_full_framework ? "text-cyan-400" : "text-gray-500"}>Completo</span>
+                                    <FontAwesomeIcon 
+                                        icon={metadata?.use_full_framework ? faToggleOn : faToggleOff} 
+                                        className={`text-lg ${metadata?.use_full_framework ? "text-cyan-500" : "text-gray-600"}`} 
+                                    />
+                                    <span className={!metadata?.use_full_framework ? "text-green-400" : "text-gray-500"}>Resumido</span>
+                                </button>
+                            </div>
+
+                            {/* Framework Resumido (Base por defecto) */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1">
+                                    <FontAwesomeIcon icon={faCompressAlt} /> Resumen (Contexto Ágil)
+                                </label>
+                                <p className="text-[9px] text-gray-500 italic">Se usará por defecto para respuestas rápidas.</p>
+                                <AutoResizeTextarea 
+                                    value={metadata?.framework_summary || ''} 
+                                    onChange={(e: any) => updateField('framework_summary', e.target.value)} 
+                                    onBlur={handleBlur} 
+                                    placeholder="Puntos clave para que la IA no pierda el foco (ej: Tono, Magia, Tecnología)..." 
+                                    className="w-full bg-gray-800/50 border border-gray-700 rounded p-2 text-xs text-gray-300 focus:border-green-500 outline-none resize-none min-h-[80px]" 
+                                />
+                            </div>
+
+                            {/* Framework Completo */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-cyan-500 uppercase flex items-center gap-1">
+                                    <FontAwesomeIcon icon={faBook} /> Framework Completo (Lore)
+                                </label>
+                                <p className="text-[9px] text-gray-500 italic">Activa el interruptor arriba para forzar su uso.</p>
+                                <AutoResizeTextarea 
+                                    value={metadata?.framework || ''} 
+                                    onChange={(e: any) => updateField('framework', e.target.value)} 
+                                    onBlur={handleBlur} 
+                                    placeholder="Lore completo, historia, geografía detallada..." 
+                                    className="w-full bg-gray-800/50 border border-gray-700 rounded p-2 text-xs text-gray-300 focus:border-cyan-500 outline-none resize-none min-h-[300px]" 
+                                />
+                            </div>
+                        </div>
+                    </section>
+
                 </div>
             </div>
         </>

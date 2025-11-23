@@ -3,36 +3,31 @@ from services.file_service import FileService
 import os
 import google.generativeai as genai
 
-# Configuración de Gemini basada en datosv1.txt
-API_KEY = "AIzaSyCHn26XJ5sX5QxnCCvHaTR4pc3m5dmOk3E"
-genai.configure(api_key=API_KEY)
-
-# Configuración del modelo
-generation_config = {
-  "temperature": 0.9,
-  "top_p": 0.95,
-  "top_k": 40,
-  "max_output_tokens": 8192,
-  "response_mime_type": "text/plain",
-}
-
-# Usamos el modelo listado en datosv1.txt
-model = genai.GenerativeModel(
-  model_name="gemini-2.0-flash",
-  generation_config=generation_config,
-)
-
 ai_bp = Blueprint('ai', __name__)
+
+def configure_genai():
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY not found in environment variables")
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        generation_config={
+            "temperature": 0.9,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 8192,
+            "response_mime_type": "text/plain",
+        }
+    )
 
 def get_file_service():
     storage_path = current_app.config['DATA_STORAGE_PATH']
     return FileService(storage_path)
 
 def load_campaign_context(service, campaign_id):
-    """Carga metadatos y elementos del vault para contexto"""
     path = service._get_campaign_path(campaign_id)
     metadata = service.load_json(os.path.join(path, "metadata.json"))
-    
     vault_path = os.path.join(path, "vault")
     vault_items = []
     if os.path.exists(vault_path):
@@ -40,15 +35,39 @@ def load_campaign_context(service, campaign_id):
             if f.endswith(".json"):
                 item = service.load_json(os.path.join(vault_path, f))
                 if item: vault_items.append(item)
-                
     return metadata, vault_items
+
+def get_rolling_memory(service, campaign_id, limit=3):
+    """Recupera los resúmenes de las últimas 'limit' sesiones completadas."""
+    campaign_path = service._get_campaign_path(campaign_id)
+    sessions_path = os.path.join(campaign_path, "sessions")
+    sessions = []
+    
+    if os.path.exists(sessions_path):
+        for f in os.listdir(sessions_path):
+            if f.endswith(".json"):
+                sess = service.load_json(os.path.join(sessions_path, f))
+                if sess and sess.get('status') == 'completed' and sess.get('summary'):
+                    sessions.append(sess)
+    
+    # Ordenar por número (descendente) y tomar los últimos
+    sessions.sort(key=lambda x: x.get('number', 0), reverse=True)
+    recent = sessions[:limit]
+    
+    # Formatear texto (orden cronológico para la lectura de la IA)
+    memory_text = ""
+    for s in reversed(recent):
+        memory_text += f"- Sesión {s['number']} ({s.get('title', 'Sin título')}): {s.get('summary')}\n"
+    
+    return memory_text
 
 @ai_bp.route('/<campaign_id>/chat', methods=['POST'])
 def chat_with_ai(campaign_id):
     try:
+        model = configure_genai() # Configurar con la key del env cada vez
         data = request.get_json()
         user_query = data.get('query', '')
-        context_mode = data.get('mode', 'vault') # 'vault' o 'session'
+        context_mode = data.get('mode', 'vault') 
         session_id = data.get('sessionId')
         
         service = get_file_service()
@@ -57,72 +76,79 @@ def chat_with_ai(campaign_id):
         if not metadata:
             return jsonify({"error": "Campaign not found"}), 404
 
-        # Construcción del System Prompt
+        # Lógica de Framework
+        use_full = metadata.get('use_full_framework', False)
+        framework_full = metadata.get('framework', '')
+        framework_summary = metadata.get('framework_summary', '')
+        framework_context = framework_full if use_full else (framework_summary or framework_full)
+        if not framework_context: framework_context = "Mundo de fantasía genérico."
+
+        # Memoria Rodante (Contexto Histórico Reciente)
+        rolling_memory = get_rolling_memory(service, campaign_id)
+
         characters = [i['content'] for i in vault_items if i['type'] == 'character']
         secrets = [i['content'] for i in vault_items if i['type'] == 'secret' and i['status'] == 'reserve']
-        
-        framework = metadata.get('framework', 'Mundo de fantasía genérico.')
         truths = metadata.get('truths', [])
         fronts = metadata.get('fronts', [])
 
         system_prompt = f"""
-        Eres un Asistente de Dungeon Master experto en la metodología 'Return of the Lazy Dungeon Master'.
-        Tu objetivo es ayudar al DM a improvisar narrativa, conectar tramas y profundizar en el mundo sin usar mecánicas de juego, números ni estadísticas.
+        Eres un Asistente de Dungeon Master experto.
         
-        CONTEXTO DE CAMPAÑA:
-        - Framework (Mundo): {framework}
-        - 6 Verdades: {', '.join(filter(None, truths))}
-        - Frentes (Amenazas): {str(fronts)}
-        - Personajes Jugadores (PJs): {str(characters)}
+        CONTEXTO MUNDIAL (Framework):
+        {framework_context}
+        
+        VERDADES DEL MUNDO:
+        {', '.join(filter(None, truths))}
+        
+        FRENTES (Amenazas Activas):
+        {str(fronts)}
+        
+        PERSONAJES (PJs):
+        {str(characters)}
+        
+        MEMORIA RECIENTE (Lo que ha pasado últimamente):
+        {rolling_memory if rolling_memory else "No hay sesiones previas registradas."}
         """
 
         if context_mode == 'session' and session_id:
-            # Cargar sesión activa
             session_path = os.path.join(service._get_campaign_path(campaign_id), "sessions")
-            session_file = next((f for f in os.listdir(session_path) if f.endswith(f"_{session_id}.json")), None)
+            # Buscar archivo de sesión
+            target_file = None
+            for f in os.listdir(session_path):
+                if f.endswith(f"_{session_id}.json"):
+                    target_file = f
+                    break
             
-            if session_file:
-                session_data = service.load_json(os.path.join(session_path, session_file))
+            if target_file:
+                session_data = service.load_json(os.path.join(session_path, target_file))
                 linked_ids = session_data.get('linked_items', [])
                 active_items = [i['content'] for i in vault_items if i['id'] in linked_ids]
                 
                 system_prompt += f"""
+                ESTADO: SESIÓN EN CURSO.
+                Elementos en escena: {str(active_items)}
+                Secretos disponibles: {str(secrets)}
                 
-                ESTAMOS EN UNA SESIÓN ACTIVA.
-                Elementos activos en la escena: {str(active_items)}
-                Secretos NO revelados disponibles para usar: {str(secrets)}
-                
-                INSTRUCCIONES PARA SESIÓN:
-                1. Si el usuario pregunta qué encuentra un personaje, busca en la lista de 'Secretos NO revelados' y mira si puedes conectar uno.
-                2. Conecta los hallazgos con los 'Deseos' o 'Vínculos' de los Personajes Jugadores definidos arriba.
-                3. No inventes cosas al azar si puedes usar un Secreto o un Frente existente para avanzar la trama.
-                4. Sé conciso y evocador.
+                Instrucciones: Prioriza conectar la situación actual con la 'Memoria Reciente' y los 'Frentes'.
                 """
         else:
-            # Modo Vault (Preparación)
             item_names = [i['content'].get('name', i['content'].get('title')) for i in vault_items]
             system_prompt += f"""
-            
-            ESTAMOS EN MODO PREPARACIÓN (VAULT).
-            Items existentes en el Vault: {str(item_names)}
-            
-            INSTRUCCIONES PARA VAULT:
-            1. Ayuda a generar nuevos elementos (NPCs, Lugares, Secretos) que encajen con el Framework y los Frentes.
-            2. Asegúrate de que lo nuevo tenga coherencia con lo ya existente.
+            ESTADO: PREPARACIÓN (VAULT).
+            Items existentes: {str(item_names)}
+            Instrucciones: Crea contenido nuevo que sea coherente con el Framework y la historia reciente.
             """
 
-        # Llamada a Gemini
-        chat_session = model.start_chat(
+        chat = model.start_chat(
             history=[
                 {"role": "user", "parts": [system_prompt]},
-                {"role": "model", "parts": ["Entendido. Estoy listo para ayudarte como tu Asistente de DM Lazy. ¿Qué necesitas?"]}
+                {"role": "model", "parts": ["Entendido DM. Tengo el contexto completo. ¿Qué hacemos hoy?"]}
             ]
         )
         
-        response = chat_session.send_message(user_query)
+        response = chat.send_message(user_query)
         return jsonify({"response": response.text})
         
     except Exception as e:
-        # Log del error en la terminal del backend
-        print(f"Error CRÍTICO en IA: {str(e)}") 
+        print(f"Error IA: {str(e)}") 
         return jsonify({"error": str(e)}), 500

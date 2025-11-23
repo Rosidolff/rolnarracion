@@ -1,10 +1,14 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import os
+from dotenv import load_dotenv # Importar dotenv
 from routes.campaign_routes import campaign_bp
 from routes.vault_routes import vault_bp
 from routes.session_routes import session_bp
 from routes.ai_routes import ai_bp
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)

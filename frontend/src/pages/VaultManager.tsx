@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faPlus, faShareFromSquare, faMinus, faShieldAlt, faGem, faLink, faCheckSquare, faSquare
+    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faPlus, faShareFromSquare, faMinus, faShieldAlt, faGem, faLink, faCheckSquare, faSquare, faTag
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
@@ -19,6 +19,66 @@ const TYPE_LABELS: Record<string, string> = {
     location: "LUGARES",
     monster: "ENEMIGOS",
     item: "ITEMS"
+};
+
+// --- COMPONENTE TAG INPUT (NUEVO) ---
+const TagInput = ({ tags, onChange, allExistingTags }: { tags: string[], onChange: (t: string[]) => void, allExistingTags: string[] }) => {
+    const [input, setInput] = useState('');
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+
+    const handleAdd = (val: string) => {
+        const trimmed = val.trim().toLowerCase();
+        if (trimmed && !tags.includes(trimmed)) {
+            onChange([...tags, trimmed]);
+        }
+        setInput('');
+        setSuggestions([]);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAdd(input);
+        }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setInput(val);
+        if (val.length > 0) {
+            setSuggestions(allExistingTags.filter(t => t.includes(val.toLowerCase()) && !tags.includes(t)).slice(0, 5));
+        } else {
+            setSuggestions([]);
+        }
+    };
+
+    return (
+        <div className="flex flex-wrap gap-1 items-center bg-gray-900 border border-gray-700 rounded px-2 py-1 w-full relative">
+            <FontAwesomeIcon icon={faTag} className="text-gray-600 text-xs" />
+            {tags.map(tag => (
+                <span key={tag} className="bg-blue-900/40 text-blue-300 text-[10px] px-1.5 rounded border border-blue-800 flex items-center gap-1">
+                    {tag}
+                    <button onClick={() => onChange(tags.filter(t => t !== tag))} className="hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
+                </span>
+            ))}
+            <input 
+                value={input}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Etiquetas..."
+                className="bg-transparent text-xs text-white outline-none flex-1 min-w-[60px]"
+            />
+            {suggestions.length > 0 && (
+                <div className="absolute top-full left-0 w-full bg-gray-800 border border-gray-600 rounded mt-1 z-50 shadow-lg">
+                    {suggestions.map(s => (
+                        <div key={s} onClick={() => handleAdd(s)} className="px-2 py-1 text-xs text-gray-300 hover:bg-blue-600 hover:text-white cursor-pointer">
+                            {s}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 };
 
 // Editor de listas con soporte para Checkbox (Objetos o Strings)
@@ -183,6 +243,9 @@ export default function VaultManager() {
     const [editData, setEditData] = useState<any>({});
     const editRef = useRef<HTMLDivElement>(null);
 
+    // --- CALCULAR TAGS ÚNICOS PARA AUTOCOMPLETADO ---
+    const allTags = Array.from(new Set(items.flatMap(i => i.tags || [])));
+
     useEffect(() => {
         if (id) {
             loadItems();
@@ -302,6 +365,10 @@ export default function VaultManager() {
         setEditData({ ...editData, content: newContent });
     };
 
+    const updateEditTags = (newTags: string[]) => {
+        setEditData({ ...editData, tags: newTags });
+    };
+
     const renderEditInputs = (type: string) => {
         if (type === 'character') {
             return (
@@ -326,16 +393,18 @@ export default function VaultManager() {
                         </div>
                         <div>
                             <h4 className="text-[10px] font-bold text-yellow-400 uppercase mb-1"><FontAwesomeIcon icon={faGem} /> Lista de Deseos (Conseguible)</h4>
-                            {/* WishList Checkable */}
                             <ListEditor items={editData.content.wish_list} onChange={v => updateEditContent('wish_list', v)} placeholder="Objeto deseado..." checkable={true} />
                         </div>
                          <div>
                             <h4 className="text-[10px] font-bold text-blue-400 uppercase mb-1"><FontAwesomeIcon icon={faLink} /> Vínculos (Quemable)</h4>
-                            {/* Bonds Checkable */}
                             <ListEditor items={editData.content.bonds} onChange={v => updateEditContent('bonds', v)} placeholder="Vínculo con..." checkable={true} />
                         </div>
                      </div>
                      
+                     <div className="col-span-full border-t border-gray-700 pt-2">
+                        <TagInput tags={editData.tags || []} onChange={updateEditTags} allExistingTags={allTags} />
+                     </div>
+
                      <div className="col-span-full border-t border-gray-700 pt-2">
                         <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-1">Notas Persistentes</h4>
                         <AutoResizeTextarea value={editData.content.notes || ''} onChange={(e: any) => updateEditContent('notes', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300 text-xs resize-none" placeholder="Notas generales del personaje..." />
@@ -427,6 +496,13 @@ export default function VaultManager() {
                                     <span className="text-gray-600 mr-2">-</span><span className="text-gray-400">{item.content.description}</span>
                                 </>
                             )}
+                            
+                            {/* Visualización de Tags (Mini) */}
+                            {item.tags && item.tags.length > 0 && (
+                                <span className="ml-2 opacity-70">
+                                    {item.tags.map((t: string) => <span key={t} className="text-[9px] text-blue-300 bg-blue-900/30 px-1 rounded mr-1">#{t}</span>)}
+                                </span>
+                            )}
                         </div>
                     </div>
                     
@@ -454,7 +530,14 @@ export default function VaultManager() {
                                 {item.type !== 'character' && renderEditInputs(item.type)}
                                 <div className="flex gap-2 ml-auto"><button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700"><FontAwesomeIcon icon={faTimes} /></button></div>
                             </div>
-                            {item.type !== 'character' && <AutoResizeTextarea value={editData.content.description || ''} onChange={(e: any) => updateEditContent('description', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm font-sans resize-none" placeholder="Descripción..." />}
+                            {item.type !== 'character' && (
+                                <>
+                                    <AutoResizeTextarea value={editData.content.description || ''} onChange={(e: any) => updateEditContent('description', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm font-sans resize-none" placeholder="Descripción..." />
+                                    <div className="mt-1">
+                                        <TagInput tags={editData.tags || []} onChange={updateEditTags} allExistingTags={allTags} />
+                                    </div>
+                                </>
+                            )}
                             
                             {item.type === 'character' && renderEditInputs('character')}
                         </div>
@@ -467,7 +550,9 @@ export default function VaultManager() {
 
     const searchFilteredItems = items.filter(item => {
         const text = (item.content.name || item.content.title || '').toLowerCase() + (item.content.description || '').toLowerCase() + (item.content.player_name || '').toLowerCase();
-        if (!text.includes(searchQuery.toLowerCase())) return false;
+        const tagsMatch = item.tags ? item.tags.some((t: string) => t.includes(searchQuery.toLowerCase())) : false;
+        
+        if (!text.includes(searchQuery.toLowerCase()) && !tagsMatch) return false;
 
         const status = getItemStatus(item);
         if (statusFilter !== 'all') {

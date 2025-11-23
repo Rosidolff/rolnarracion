@@ -60,7 +60,8 @@ def create_session(campaign_id):
         "summary": "", # Inicializar vacío
         "notes": "",
         "linked_items": [],
-        "status": "planned"
+        "status": "planned",
+        "fronts_snapshot": [] # Nuevo campo para historial de frentes
     }
     
     file_path = os.path.join(sessions_path, f"session_{next_number:02d}_{session_id}.json")
@@ -105,6 +106,16 @@ def update_session(campaign_id, session_id):
     file_path = os.path.join(sessions_path, target_file)
     current_session = service.load_json(file_path)
     
+    # Lógica de Snapshot: Si se marca como completada, guardar estado de frentes
+    if data.get('status') == 'completed' and current_session.get('status') != 'completed':
+        try:
+            metadata_path = os.path.join(campaign_path, "metadata.json")
+            metadata = service.load_json(metadata_path)
+            if metadata and 'fronts' in metadata:
+                current_session['fronts_snapshot'] = metadata['fronts']
+        except Exception as e:
+            print(f"Error saving fronts snapshot: {e}")
+
     # Update fields
     fields = ['title', 'strong_start', 'recap', 'summary', 'notes', 'linked_items', 'status']
     for field in fields:

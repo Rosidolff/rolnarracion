@@ -37,6 +37,8 @@ def create_campaign():
         "fronts": data.get('fronts', []),
         "safety_tools": data.get('safety_tools', ''),
         "framework": data.get('framework', ''),
+        "framework_summary": data.get('framework_summary', ''), # Nuevo campo
+        "use_full_framework": False, # Nuevo campo, por defecto False (usar resumen)
         "active_session": None
     }
     service.save_json(os.path.join(base_path, "metadata.json"), metadata)
@@ -50,7 +52,7 @@ def create_campaign():
         "date": datetime.now().isoformat(),
         "strong_start": "",
         "recap": "",
-        "summary": "", # Campo nuevo para la Bitácora
+        "summary": "",
         "notes": "",
         "linked_items": [],
         "status": "planned"
@@ -87,7 +89,12 @@ def update_campaign(campaign_id):
     if not current_metadata:
         return jsonify({"error": "Campaign not found"}), 404
         
-    fields = ['title', 'elevator_pitch', 'moods', 'truths', 'fronts', 'safety_tools', 'active_session', 'framework']
+    # Lista ampliada de campos permitidos
+    fields = [
+        'title', 'elevator_pitch', 'moods', 'truths', 'fronts', 'safety_tools', 
+        'active_session', 'framework', 'framework_summary', 'use_full_framework'
+    ]
+    
     for field in fields:
         if field in data:
             current_metadata[field] = data[field]
