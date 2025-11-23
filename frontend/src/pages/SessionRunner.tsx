@@ -11,6 +11,15 @@ import CampaignSidebar from '../components/CampaignSidebar';
 const ITEM_TYPES = ["npc", "scene", "secret", "location", "monster", "item"];
 const REUSABLE_TYPES = ["npc", "location", "item", "monster"];
 
+const TYPE_LABELS: Record<string, string> = {
+    npc: "NPCS",
+    scene: "ESCENAS",
+    secret: "SECRETOS",
+    location: "LUGARES",
+    monster: "ENEMIGOS",
+    item: "ITEMS"
+};
+
 const AutoResizeTextarea = ({ value, onChange, placeholder, className, onBlur, autoFocus }: any) => {
     const ref = useRef<HTMLTextAreaElement>(null);
     useLayoutEffect(() => {
@@ -222,7 +231,8 @@ export default function SessionRunner() {
         }
 
         const rowBg = isUsed ? 'bg-amber-900/20 border-l-2 border-amber-600' : 'hover:bg-gray-750 border-l-2 border-transparent';
-        
+        const nameClass = isUsed ? 'text-amber-400 font-bold mr-2 transition-colors inline-flex items-center gap-1 align-baseline' : 'font-bold text-white mr-2 hover:text-blue-400 transition-colors inline-flex items-center gap-1 align-baseline';
+
         return (
             <div key={item.id} className={`border-b border-gray-800 last:border-0 transition-colors ${rowBg}`}>
                 <div className="flex items-center gap-3 min-h-[1.5rem] p-2">
@@ -231,7 +241,7 @@ export default function SessionRunner() {
                     </button>
 
                     <div className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedItems(p => ({...p, [item.id]: !p[item.id]}))}>
-                        <span className={`font-bold text-white mr-2 hover:text-blue-400 transition-colors inline-flex items-center gap-1 align-baseline ${isUsed ? 'text-amber-100' : ''}`} onClick={(e) => {e.stopPropagation(); startEditingItem(item);}}>
+                        <span className={nameClass} onClick={(e) => {e.stopPropagation(); startEditingItem(item);}}>
                             {name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" />
                         </span>
                         {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[10px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[10px] mr-2">{item.content.relationship}</span>}</>}
@@ -272,7 +282,7 @@ export default function SessionRunner() {
                     onSearchChange={setSearchQuery} 
                     onAdd={() => handleQuickCreate(filterType)}
                     extraTabs={[
-                        { id: 'strong_start', label: 'Start', icon: faBolt },
+                        { id: 'strong_start', label: 'Inicio', icon: faBolt },
                         { id: 'recap', label: 'Recap', icon: faBookOpen }
                     ]}
                 />
@@ -309,7 +319,7 @@ export default function SessionRunner() {
                     
                     {filterType === 'strong_start' && (
                         <div className="h-full flex flex-col">
-                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBolt} /> Strong Start</h3>
+                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBolt} /> Inicio Fuerte</h3>
                             <AutoResizeTextarea value={session.strong_start || ''} onChange={(e: any) => updateField('strong_start', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200 resize-none focus:border-purple-500 focus:outline-none" placeholder="Escribe cómo empieza la sesión..." autoFocus />
                         </div>
                     )}
@@ -341,7 +351,7 @@ export default function SessionRunner() {
                                     <div key={type} className="border-b border-gray-700 last:border-0">
                                         <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
                                             <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
-                                            <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{type}s</span>
+                                            <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
                                             <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
                                             <button onClick={(e) => { e.stopPropagation(); handleQuickCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
                                         </div>
@@ -368,7 +378,7 @@ export default function SessionRunner() {
                                  if (group.length === 0) return null;
                                  return (
                                      <div key={type} className="bg-gray-800/50 rounded p-2 border border-gray-800">
-                                         <h3 className="text-xs font-bold uppercase text-gray-500 mb-2">{type}s</h3>
+                                         <h3 className="text-xs font-bold uppercase text-gray-500 mb-2">{TYPE_LABELS[type]}</h3>
                                          <div className="space-y-1">
                                             {group.map(item => {
                                                 const isLinked = session.linked_items?.includes(item.id);

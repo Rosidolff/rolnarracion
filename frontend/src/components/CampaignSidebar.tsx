@@ -48,7 +48,7 @@ const MoodsEditor = ({ value, onChange }: { value: string, onChange: (val: strin
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onBlur={() => { if(inputValue.trim()) { onChange([...tags, inputValue.trim()].join(',')); setInputValue(""); } }}
-                placeholder={tags.length === 0 ? "Añadir moods..." : ""}
+                placeholder={tags.length === 0 ? "Añadir géneros..." : ""}
             />
         </div>
     );
@@ -81,7 +81,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         const truths = meta.truths || [];
         while (truths.length < 6) truths.push("");
         
-        // Normalizar Frentes: Convertir strings antiguos a objetos {text, done}
         const fronts = (meta.fronts || []).map((f: any) => ({
             ...f,
             grim_portents: (f.grim_portents || ["", "", ""]).map((gp: any) => 
@@ -113,7 +112,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         updateField('truths', newTruths);
     };
 
-    // --- FRONTS LOGIC ---
     const updateFront = (index: number, field: string, val: string) => {
         const newFronts = [...(metadata.fronts || [])];
         newFronts[index] = { ...newFronts[index], [field]: val };
@@ -121,7 +119,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
     };
     
     const addFront = () => {
-        // Inicializamos con objetos vacíos
         const newFronts = [...(metadata.fronts || []), { 
             name: '', 
             goal: '', 
@@ -142,7 +139,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         portents[portentIndex] = { ...portents[portentIndex], [field]: val };
         newFronts[frontIndex].grim_portents = portents;
         
-        // Si es 'done', persistimos inmediatamente para UX rápida
         if (field === 'done') {
             persistChanges({ ...metadata, fronts: newFronts });
         } else {
@@ -197,19 +193,18 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
             
             <div className={`fixed top-0 left-0 h-full w-96 bg-gray-900 border-r border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900">
-                    {/* Título de la campaña */}
                     <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest truncate pr-4">{metadata?.title || "Campaña"}</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
                     <section>
-                        <h3 className="text-xs font-bold text-yellow-500 uppercase mb-2">Core Concept</h3>
+                        <h3 className="text-xs font-bold text-yellow-500 uppercase mb-2">Eje Conceptual</h3>
                         <AutoResizeTextarea value={metadata?.elevator_pitch || ''} onChange={(e: any) => updateField('elevator_pitch', e.target.value)} onBlur={handleBlur} placeholder="El gancho principal..." className="w-full bg-transparent border-b border-gray-800 hover:border-gray-700 focus:border-yellow-500 outline-none text-sm text-gray-300 resize-none" />
                     </section>
 
                     <section>
-                        <h3 className="text-xs font-bold text-pink-500 uppercase mb-2">Moods</h3>
+                        <h3 className="text-xs font-bold text-pink-500 uppercase mb-2">Géneros</h3>
                         <MoodsEditor value={metadata?.moods || ''} onChange={(val) => { updateField('moods', val); persistChanges({...metadata, moods: val}); }} />
                     </section>
 
@@ -227,7 +222,7 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
 
                     <section>
                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xs font-bold text-red-500 uppercase">Fronts</h3>
+                            <h3 className="text-xs font-bold text-red-500 uppercase">Frentes</h3>
                             <button onClick={addFront} className="text-gray-500 hover:text-green-400"><FontAwesomeIcon icon={faPlus} size="xs"/></button>
                         </div>
                         <div className="space-y-4">
@@ -242,7 +237,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                     <div className="space-y-1 pl-2 border-l-2 border-red-900/30">
                                         {(f.grim_portents || []).map((gp: any, gpIndex: number) => (
                                             <div key={gpIndex} className="flex items-center gap-2 group/portent mb-1">
-                                                {/* Botón de estado: Círculo sólido o CSS Border */}
                                                 <button 
                                                     onClick={() => updateGrimPortent(i, gpIndex, 'done', !gp.done)}
                                                     className={`flex-shrink-0 w-3 h-3 flex items-center justify-center outline-none ${gp.done ? 'text-red-800' : ''}`}
@@ -262,7 +256,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                                     className={`bg-transparent w-full text-[10px] outline-none hover:bg-gray-800/50 rounded px-1 transition-colors ${gp.done ? 'line-through text-gray-500' : 'text-gray-300'}`} 
                                                 />
                                                 
-                                                {/* Botón borrar (solo para índices >= 3) */}
                                                 {gpIndex >= 3 && (
                                                     <button onClick={() => removeGrimPortent(i, gpIndex)} className="text-gray-700 hover:text-red-500 opacity-0 group-hover/portent:opacity-100 transition-opacity">
                                                         <FontAwesomeIcon icon={faTimes} size="xs"/>
@@ -271,7 +264,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Botón añadir evento discreto */}
                                     <div className="flex justify-end mt-1">
                                         <button onClick={() => addGrimPortent(i)} className="text-gray-600 hover:text-green-400 text-[10px] opacity-0 group-hover/front:opacity-100 transition-opacity px-2" title="Añadir Evento">
                                             <FontAwesomeIcon icon={faPlus} />

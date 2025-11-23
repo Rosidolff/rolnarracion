@@ -10,6 +10,15 @@ import CampaignSidebar from '../components/CampaignSidebar';
 
 const ITEM_TYPES = ["npc", "scene", "secret", "location", "monster", "item"];
 
+const TYPE_LABELS: Record<string, string> = {
+    npc: "NPCS",
+    scene: "ESCENAS",
+    secret: "SECRETOS",
+    location: "LUGARES",
+    monster: "ENEMIGOS",
+    item: "ITEMS"
+};
+
 const AutoResizeTextarea = ({ value, onChange, placeholder, className }: any) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => {
@@ -28,12 +37,9 @@ export default function VaultManager() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Active Session
     const [activeSession, setActiveSession] = useState<any>(null);
 
-    // Filter States
     const [showFilters, setShowFilters] = useState(false);
-    // Eliminada opción 'burned' del tipo, ya que se agrupa en 'used'
     const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'used'>('all');
     const [subFilter, setSubFilter] = useState<string>('all');
 
@@ -240,7 +246,6 @@ export default function VaultManager() {
         const status = getItemStatus(item);
         if (statusFilter !== 'all') {
             if (statusFilter === 'used') {
-                // El filtro 'used' ahora engloba 'used' Y 'burned'
                 if (status !== 'used' && status !== 'burned') return false;
             } else if (status !== statusFilter) {
                 return false;
@@ -291,7 +296,7 @@ export default function VaultManager() {
                             <div key={type} className="border-b border-gray-700 last:border-0">
                                 <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
                                     <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
-                                    <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{type}s</span>
+                                    <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
                                     <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
                                     
                                     {filterType === 'all' && (
