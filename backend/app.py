@@ -4,6 +4,7 @@ import os
 from routes.campaign_routes import campaign_bp
 from routes.vault_routes import vault_bp
 from routes.session_routes import session_bp
+from routes.ai_routes import ai_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +15,7 @@ app.config['DATA_STORAGE_PATH'] = DATA_STORAGE_PATH
 app.register_blueprint(campaign_bp, url_prefix='/api/campaigns')
 app.register_blueprint(vault_bp, url_prefix='/api/campaigns')
 app.register_blueprint(session_bp, url_prefix='/api/campaigns')
+app.register_blueprint(ai_bp, url_prefix='/api/campaigns')
 
 @app.route('/health', methods=['GET'])
 def health_check():

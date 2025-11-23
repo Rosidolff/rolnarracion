@@ -34,6 +34,7 @@ def create_campaign():
         "truths": data.get('truths', []),
         "fronts": data.get('fronts', []),
         "safety_tools": data.get('safety_tools', ''),
+        "framework": data.get('framework', ''), # Nuevo campo: Contexto del mundo
         "active_session": None
     }
     
@@ -63,7 +64,7 @@ def update_campaign(campaign_id):
     if not current_metadata:
         return jsonify({"error": "Campaign not found"}), 404
         
-    fields = ['title', 'elevator_pitch', 'moods', 'truths', 'fronts', 'safety_tools', 'active_session']
+    fields = ['title', 'elevator_pitch', 'moods', 'truths', 'fronts', 'safety_tools', 'active_session', 'framework']
     for field in fields:
         if field in data:
             current_metadata[field] = data[field]

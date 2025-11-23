@@ -44,5 +44,12 @@ export const api = {
             body: JSON.stringify(data)
         }).then(res => res.json()),
         delete: (campaignId: string, sessionId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions/${sessionId}`, { method: 'DELETE' }).then(res => res.json())
+    },
+    ai: {
+        ask: (campaignId: string, query: string, mode: 'vault' | 'session', sessionId?: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, mode, sessionId })
+        }).then(res => res.json())
     }
 };

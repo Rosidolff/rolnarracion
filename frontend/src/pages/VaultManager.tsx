@@ -7,6 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
+import AIAssistant from '../components/AIAssistant';
 
 const ITEM_TYPES = ["character", "npc", "scene", "secret", "location", "monster", "item"];
 
@@ -500,6 +501,9 @@ export default function VaultManager() {
                 onFilterSubChange={setSubFilter}
             />}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
+            
+            {/* AI ASSISTANT Integration */}
+            {id && <AIAssistant campaignId={id} mode="vault" />}
 
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-900">
                 <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">

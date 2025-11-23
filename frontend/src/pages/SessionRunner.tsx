@@ -7,6 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
+import AIAssistant from '../components/AIAssistant';
 
 const ITEM_TYPES = ["character", "npc", "scene", "secret", "location", "monster", "item"];
 const REUSABLE_TYPES = ["npc", "location", "item", "monster"];
@@ -520,6 +521,9 @@ export default function SessionRunner() {
                 />
             )}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
+            
+            {/* AI ASSISTANT Integration */}
+            {id && session && <AIAssistant campaignId={id} mode="session" sessionId={session.id} />}
 
             <div className="h-12 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4 flex-shrink-0">
                 <div className="flex items-center gap-3 flex-1">
