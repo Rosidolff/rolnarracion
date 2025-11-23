@@ -4,6 +4,7 @@ import VaultManager from './pages/VaultManager';
 import SessionRunner from './pages/SessionRunner';
 import Bitacora from './pages/Bitacora';
 import { useParams } from 'react-router-dom';
+import AIAssistant from './components/AIAssistant'; // Importar componente
 
 // Componente auxiliar para redirección
 const RedirectToVault = () => {
@@ -15,6 +16,9 @@ function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-900 text-white font-sans">
+        {/* El Asistente vive aquí, persistente en toda la app */}
+        <AIAssistant />
+        
         <Routes>
           <Route path="/" element={<CampaignList />} />
           

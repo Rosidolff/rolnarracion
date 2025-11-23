@@ -34,7 +34,7 @@ def create_session(campaign_id):
     campaign_path = service._get_campaign_path(campaign_id)
     sessions_path = os.path.join(campaign_path, "sessions")
     
-    # Data opcional (ej: recap de la sesión anterior)
+    # Data opcional
     req_data = request.get_json() or {}
     
     # Calculate next number
@@ -56,12 +56,13 @@ def create_session(campaign_id):
         "title": "", 
         "date": datetime.now().isoformat(),
         "strong_start": "",
-        "recap": req_data.get('recap', ""), # Recibir recap automático
-        "summary": "", # Inicializar vacío
+        "recap": req_data.get('recap', ""),
+        "summary": "", 
         "notes": "",
         "linked_items": [],
         "status": "planned",
-        "fronts_snapshot": [] # Nuevo campo para historial de frentes
+        "fronts_snapshot": [],
+        "used_items": [] # CAMPO NUEVO
     }
     
     file_path = os.path.join(sessions_path, f"session_{next_number:02d}_{session_id}.json")
@@ -116,8 +117,8 @@ def update_session(campaign_id, session_id):
         except Exception as e:
             print(f"Error saving fronts snapshot: {e}")
 
-    # Update fields
-    fields = ['title', 'strong_start', 'recap', 'summary', 'notes', 'linked_items', 'status']
+    # Update fields (INCLUIDO 'used_items')
+    fields = ['title', 'strong_start', 'recap', 'summary', 'notes', 'linked_items', 'status', 'used_items']
     for field in fields:
         if field in data:
             current_session[field] = data[field]
@@ -127,7 +128,6 @@ def update_session(campaign_id, session_id):
 
 @session_bp.route('/<campaign_id>/sessions/<session_id>', methods=['DELETE'])
 def delete_session(campaign_id, session_id):
-    # Nota: El frontend evitará borrar sesiones archivadas, pero mantenemos esto para limpieza si es necesario
     service = get_file_service()
     campaign_path = service._get_campaign_path(campaign_id)
     sessions_path = os.path.join(campaign_path, "sessions")

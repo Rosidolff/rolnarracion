@@ -7,7 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
-import AIAssistant from '../components/AIAssistant';
+import { useChat } from '../context/ChatContext';
 
 const ITEM_TYPES = ["character", "npc", "scene", "secret", "location", "monster", "item"];
 const REUSABLE_TYPES = ["npc", "location", "item", "monster"];
@@ -33,7 +33,6 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, onBlur, a
     return <textarea ref={ref} value={value} onChange={onChange} onBlur={onBlur} className={`${className} overflow-hidden`} placeholder={placeholder} autoFocus={autoFocus} rows={1} />;
 };
 
-// Componente visual completo para PJs (Restaurado)
 const CharacterFullView = ({ content }: { content: any }) => {
     const renderList = (list: any[]) => {
         if (!list || list.length === 0) return <span className="text-gray-600 italic">-</span>;
@@ -156,27 +155,26 @@ export default function SessionRunner() {
     const [session, setSession] = useState<any>(null);
     const [vaultItems, setVaultItems] = useState<any[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
     
     const [filterType, setFilterType] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    
     const [isLinking, setIsLinking] = useState(false);
+    
     const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
         strong_start: true, recap: true, character: true, npc: true, scene: true, secret: true, location: true, monster: true, item: true
     });
     const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
     const [usedItems, setUsedItems] = useState<Set<string>>(new Set());
-
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editData, setEditData] = useState<any>({});
     const editRef = useRef<HTMLDivElement>(null);
-
     const [activeNoteTab, setActiveNoteTab] = useState<string>('general');
-
-    // --- ESTADOS PARA CONCLUSIÓN Y RESUMEN (NUEVO) ---
     const [showConclusionModal, setShowConclusionModal] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [generatedSummary, setGeneratedSummary] = useState('');
+
+    const { setAiContext } = useChat();
 
     useEffect(() => {
         if (id) {
@@ -184,6 +182,12 @@ export default function SessionRunner() {
             initSession();
         }
     }, [id, location.state]);
+
+    useEffect(() => {
+        if (id && session?.id) {
+            setAiContext({ campaignId: id, mode: 'session', sessionId: session.id });
+        }
+    }, [id, session?.id, setAiContext]);
 
     useEffect(() => {
         const handleClickOutside = async (event: MouseEvent) => {
@@ -199,26 +203,47 @@ export default function SessionRunner() {
 
     const initSession = async () => {
         if (!id) return;
-        const passedId = location.state?.sessionId;
-        if (passedId) {
-            const s = await api.sessions.get(id, passedId);
-            setSession(s);
-        } else {
-            const sessions = await api.sessions.list(id);
-            const camp = await api.campaigns.get(id);
-            const activeId = camp.active_session;
-            let target = activeId ? sessions.find((s:any) => s.id === activeId) : null;
-            if (!target && sessions.length > 0) {
-                const sorted = sessions.sort((a: any, b: any) => b.number - a.number);
-                target = sorted.find((s:any) => s.status !== 'completed') || sorted[0];
+        setLoading(true);
+        try {
+            const passedId = location.state?.sessionId;
+            let target = null;
+
+            if (passedId) {
+                target = await api.sessions.get(id, passedId);
+            } else {
+                const sessions = await api.sessions.list(id);
+                const camp = await api.campaigns.get(id);
+                const activeId = camp.active_session;
+                target = activeId ? sessions.find((s:any) => s.id === activeId) : null;
+                if (!target && sessions.length > 0) {
+                    const sorted = sessions.sort((a: any, b: any) => b.number - a.number);
+                    target = sorted.find((s:any) => s.status !== 'completed') || sorted[0];
+                }
             }
+
             if (target) {
                 setSession(target);
+                if (target.used_items && Array.isArray(target.used_items)) {
+                    setUsedItems(new Set(target.used_items));
+                }
             } else {
                 const newS = await api.sessions.create(id);
                 setSession(newS);
             }
+        } finally {
+            setLoading(false);
         }
+    };
+
+    const toggleItemUsage = async (itemId: string) => {
+        if (!session || !id) return;
+        const newUsed = new Set(usedItems);
+        if (newUsed.has(itemId)) newUsed.delete(itemId);
+        else newUsed.add(itemId);
+        setUsedItems(newUsed);
+        const updatedSession = { ...session, used_items: Array.from(newUsed) };
+        await api.sessions.update(id, session.id, updatedSession);
+        setSession((prev: any) => ({ ...prev, used_items: Array.from(newUsed) }));
     };
 
     const saveSession = async (updated = session) => {
@@ -255,54 +280,38 @@ export default function SessionRunner() {
         if (isLinked) {
             newLinked = session.linked_items.filter((i: string) => i !== itemId);
             await api.vault.update(id, itemId, { status: 'reserve' });
-            setUsedItems(p => { const n = new Set(p); n.delete(itemId); return n; });
+            const newUsed = new Set(usedItems);
+            newUsed.delete(itemId);
+            setUsedItems(newUsed);
+            await api.sessions.update(id, session.id, { linked_items: newLinked, used_items: Array.from(newUsed) });
         } else {
             newLinked = [...(session.linked_items || []), itemId];
             await api.vault.update(id, itemId, { status: 'active' });
+            await api.sessions.update(id, session.id, { linked_items: newLinked });
         }
-        const updated = { ...session, linked_items: newLinked };
+        const updated = await api.sessions.get(id, session.id);
         setSession(updated);
-        await api.sessions.update(id, updated.id, updated);
         loadVault();
     };
 
-    // --- LÓGICA DE CONCLUSIÓN (NUEVO) ---
     const startConclusion = async () => {
         if (!id || !session) return;
         setShowConclusionModal(true);
         setIsGeneratingSummary(true);
-
         const usedItemsList = Array.from(usedItems).map(uid => {
             const item = vaultItems.find(i => i.id === uid);
             return item ? `${item.type}: ${item.content.name || item.content.title}` : '';
         }).filter(Boolean).join(', ');
-
         const notesText = typeof session.notes === 'string' 
             ? session.notes 
             : Object.entries(session.notes).map(([k, v]) => `Notas de ${k === 'general' ? 'DM' : k}: ${v}`).join('\n');
-
-        const prompt = `
-        Genera un resumen narrativo y conciso de esta sesión de juego para la bitácora.
-        
-        Título de Sesión: ${session.title}
-        Notas tomadas durante la partida:
-        ${notesText}
-        
-        Elementos utilizados/revelados:
-        ${usedItemsList}
-        
-        El resumen debe servir como recordatorio (Recap) para la siguiente sesión.
-        `;
-
+        const prompt = `Genera un resumen narrativo y conciso... Título: ${session.title}. Notas: ${notesText}. Elementos: ${usedItemsList}`;
         try {
             const res = await api.ai.ask(id, prompt, 'session', session.id);
             if (res.response) setGeneratedSummary(res.response);
-            else setGeneratedSummary("No se pudo generar el resumen automáticamente. Por favor, escríbelo manualmente.");
-        } catch (e) {
-            setGeneratedSummary("Error conectando con la IA. Escribe el resumen manualmente.");
-        } finally {
-            setIsGeneratingSummary(false);
-        }
+            else setGeneratedSummary("No se pudo generar el resumen automáticamente.");
+        } catch (e) { setGeneratedSummary("Error conectando con la IA."); } 
+        finally { setIsGeneratingSummary(false); }
     };
 
     const confirmConclusion = async () => {
@@ -310,7 +319,6 @@ export default function SessionRunner() {
         const finalDate = new Date().toISOString();
         const linkedIds = session.linked_items || [];
         const finalLinkedItems = [];
-
         for (const itemId of linkedIds) {
             const item = vaultItems.find(i => i.id === itemId);
             if (!item) continue;
@@ -324,13 +332,10 @@ export default function SessionRunner() {
                 await api.vault.update(id, itemId, { status: 'reserve' });
             }
         }
-
         const finalSession = { ...session, status: 'completed', date: finalDate, linked_items: finalLinkedItems, summary: generatedSummary };
         await api.sessions.update(id, session.id, finalSession);
-        
         const newSession = await api.sessions.create(id, { recap: generatedSummary });
         await api.campaigns.update(id, { active_session: newSession.id });
-        
         setShowConclusionModal(false);
         navigate(`/campaign/${id}/sessions`, { state: { sessionId: newSession.id } });
         window.location.reload(); 
@@ -342,7 +347,6 @@ export default function SessionRunner() {
         if (type === 'npc') { defaultContent.archetype = ""; defaultContent.relationship = ""; }
         else if (type === 'scene') { defaultContent.scene_type = "explore"; }
         else if (type === 'character') { defaultContent.player_name = "Jugador"; defaultContent.class = ""; }
-
         const newItem = await api.vault.create(id, { type, content: defaultContent, tags: [], usage_count: 0 });
         if (type !== 'character') {
             const newLinked = [...(session.linked_items || []), newItem.id];
@@ -424,7 +428,6 @@ export default function SessionRunner() {
             );
         }
 
-        // ESTILOS ORIGINALES RESTAURADOS
         const rowBg = isUsed ? 'bg-amber-900/20 border-l-2 border-amber-600' : (isCharacter ? 'bg-orange-900/10 border-l-2 border-orange-500' : 'hover:bg-gray-750 border-l-2 border-transparent');
         const nameClass = isUsed ? 'text-amber-400 font-bold mr-2 transition-colors inline-flex items-center gap-1 align-baseline' : (isCharacter ? 'font-bold text-orange-300 mr-2 inline-flex items-center gap-1' : 'font-bold text-white mr-2 hover:text-blue-400 transition-colors inline-flex items-center gap-1 align-baseline');
 
@@ -432,7 +435,7 @@ export default function SessionRunner() {
             <div key={item.id} className={`border-b border-gray-800 last:border-0 transition-colors ${rowBg}`}>
                 <div className="flex flex-col">
                     <div className="flex items-center gap-3 min-h-[1.5rem] p-2">
-                        <button onClick={() => setUsedItems(p => { const n = new Set(p); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n; })} className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${isUsed ? 'bg-amber-600 border-amber-600 text-black' : 'border-gray-600 text-transparent hover:border-gray-400'}`}>
+                        <button onClick={() => toggleItemUsage(item.id)} className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${isUsed ? 'bg-amber-600 border-amber-600 text-black' : 'border-gray-600 text-transparent hover:border-gray-400'}`}>
                             <FontAwesomeIcon icon={faCheck} size="xs" />
                         </button>
 
@@ -448,7 +451,7 @@ export default function SessionRunner() {
                             )}
                             {!isCharacter && (
                                 <>
-                                    {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[10px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[10px] mr-2">{item.content.relationship}</span>}</>}
+                                    {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[10px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[11px] mr-2">{item.content.relationship}</span>}</>}
                                     {item.type === 'scene' && item.content.scene_type && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
                                     {item.type === 'location' && item.content.aspects && <span className="text-green-400 font-mono text-[10px] mr-2">[{item.content.aspects}]</span>}
                                     <span className="text-gray-500 mx-1">-</span><span className="text-gray-400 text-sm">{item.content.description}</span>
@@ -470,14 +473,8 @@ export default function SessionRunner() {
         );
     };
 
-    if (!session) return <div className="p-8 text-white">Cargando sesión...</div>;
-
-    const characters = vaultItems.filter(i => i.type === 'character');
-    const linked = vaultItems.filter(i => session?.linked_items?.includes(i.id) && i.type !== 'character');
-    const filteredLinked = linked.filter(i => filterType === 'all' || i.type === filterType);
-    const availableForLinking = vaultItems.filter(i => (i.status === 'reserve' || session?.linked_items?.includes(i.id)) && i.type !== 'character');
-
-    if (session.status === 'completed') {
+    // ESTA PARTE HA SIDO MODIFICADA PARA LA ESTRUCTURA FIJA (SHELL)
+    if (session && session.status === 'completed') {
         return (
             <div className="h-screen flex flex-col bg-gray-900 text-gray-300 p-8 items-center justify-center">
                 <h1 className="text-3xl font-bold text-gray-500 mb-4">Sesión Archivada</h1>
@@ -492,6 +489,13 @@ export default function SessionRunner() {
             </div>
         );
     }
+
+    // --- CÁLCULO SEGURO DE VARIABLES PARA RENDERIZADO (Solución al error de TS) ---
+    const characters = vaultItems.filter(i => i.type === 'character');
+    const linkedIds = session?.linked_items || [];
+    const linked = vaultItems.filter(i => linkedIds.includes(i.id) && i.type !== 'character');
+    const filteredLinked = linked.filter(i => filterType === 'all' || i.type === filterType);
+    const availableForLinking = vaultItems.filter(i => (i.status === 'reserve' || linkedIds.includes(i.id)) && i.type !== 'character');
 
     return (
         <div className="h-screen flex flex-col bg-gray-900 text-gray-300 font-sans overflow-hidden">
@@ -508,70 +512,97 @@ export default function SessionRunner() {
                 />
             )}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
-            {id && session && <AIAssistant campaignId={id} mode="session" sessionId={session.id} />}
-
+            
+            {/* Header Fijo */}
             <div className="h-12 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4 flex-shrink-0">
                 <div className="flex items-center gap-3 flex-1">
-                    <span className="font-bold text-green-400 text-sm whitespace-nowrap">Sesión #{session.number}</span>
+                    <span className="font-bold text-green-400 text-sm whitespace-nowrap">
+                        {loading ? "Cargando..." : `Sesión #${session?.number}`}
+                    </span>
                     <span className="text-gray-600">|</span>
-                    <input type="text" value={session.title || ''} onChange={(e) => updateField('title', e.target.value)} onBlur={() => saveSession()} placeholder="Título de la sesión..." className="bg-transparent text-sm text-white w-full outline-none" />
+                    <input 
+                        type="text" 
+                        value={session?.title || ''} 
+                        onChange={(e) => updateField('title', e.target.value)} 
+                        onBlur={() => saveSession()} 
+                        placeholder={loading ? "" : "Título de la sesión..."}
+                        className="bg-transparent text-sm text-white w-full outline-none" 
+                        disabled={loading}
+                    />
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsLinking(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faLink} /> Recursos</button>
-                    <button onClick={startConclusion} className="bg-red-900/30 border border-red-800 hover:bg-red-900/50 text-red-200 text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faCheck} /> Concluir</button>
+                    <button onClick={() => setIsLinking(true)} disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faLink} /> Recursos</button>
+                    <button onClick={startConclusion} disabled={loading} className="bg-red-900/30 border border-red-800 hover:bg-red-900/50 disabled:border-gray-700 disabled:text-gray-600 text-red-200 text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faCheck} /> Concluir</button>
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* Sidebar de Notas */}
                 <div className="w-1/3 border-r border-gray-700 flex flex-col bg-gray-900">
                     <div className="flex bg-gray-800 border-b border-gray-700 overflow-x-auto custom-scrollbar">
                         <button onClick={() => setActiveNoteTab('general')} className={`px-3 py-2 text-xs font-bold uppercase ${activeNoteTab === 'general' ? 'bg-gray-900 text-blue-400' : 'text-gray-500'}`}>General</button>
-                        {characters.map(char => (
+                        {characters.map((char: any) => (
                             <button key={char.id} onClick={() => setActiveNoteTab(char.id)} className={`px-3 py-2 text-xs font-bold uppercase ${activeNoteTab === char.id ? 'bg-gray-900 text-purple-400' : 'text-gray-500'}`}>{char.content.name.split(' ')[0]}</button>
                         ))}
                     </div>
-                    <textarea value={getNoteContent()} onChange={e => updateNote(e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-900 p-4 text-gray-300 font-mono text-sm resize-none focus:outline-none" placeholder="Notas..." />
+                    <textarea 
+                        value={getNoteContent()} 
+                        onChange={e => updateNote(e.target.value)} 
+                        onBlur={() => saveSession()} 
+                        className="flex-1 w-full bg-gray-900 p-4 text-gray-300 font-mono text-sm resize-none focus:outline-none" 
+                        placeholder={loading ? "Cargando notas..." : "Notas..."}
+                        disabled={loading} 
+                    />
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-900 p-2 relative">
-                    {filterType === 'strong_start' && (
-                        <div className="h-full flex flex-col">
-                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBolt} /> Inicio Fuerte</h3>
-                            <AutoResizeTextarea value={session.strong_start || ''} onChange={(e: any) => updateField('strong_start', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
+                {/* AREA DE CONTENIDO PRINCIPAL CON SPINNER */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-900 p-2 relative animate-fade-in">
+                    {loading ? (
+                        <div className="absolute inset-0 flex justify-center items-center text-gray-500">
+                            <FontAwesomeIcon icon={faSpinner} spin size="3x" />
                         </div>
-                    )}
-                    {filterType === 'recap' && (
-                        <div className="h-full flex flex-col">
-                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBookOpen} /> Recap (Anterior)</h3>
-                            <AutoResizeTextarea value={session.recap || ''} onChange={(e: any) => updateField('recap', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
-                        </div>
-                    )}
-                    {(filterType !== 'strong_start' && filterType !== 'recap') && (
-                        <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
-                            {ITEM_TYPES.map(type => {
-                                if (filterType !== 'all' && filterType !== type) return null;
-                                const groupItems = filteredLinked.filter(i => i.type === type);
-                                const isFilteredView = filterType !== 'all';
-                                const content = (
-                                    <div className={filterType === 'all' ? "bg-gray-800" : ""}>
-                                        {groupItems.map(item => renderItemRow(item))}
-                                        {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos. Pulsa + para añadir.</div>}
-                                    </div>
-                                );
-                                if (isFilteredView) return <div key={type}>{content}</div>;
-                                return (
-                                    <div key={type} className="border-b border-gray-700 last:border-0">
-                                        <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
-                                            <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
-                                            <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
-                                            <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuickCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
-                                        </div>
-                                        {openGroups[type] && content}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                    ) : (
+                        <>
+                            {filterType === 'strong_start' && (
+                                <div className="h-full flex flex-col">
+                                    <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBolt} /> Inicio Fuerte</h3>
+                                    <AutoResizeTextarea value={session.strong_start || ''} onChange={(e: any) => updateField('strong_start', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
+                                </div>
+                            )}
+                            {filterType === 'recap' && (
+                                <div className="h-full flex flex-col">
+                                    <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBookOpen} /> Recap (Anterior)</h3>
+                                    <AutoResizeTextarea value={session.recap || ''} onChange={(e: any) => updateField('recap', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
+                                </div>
+                            )}
+                            {(filterType !== 'strong_start' && filterType !== 'recap') && (
+                                <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
+                                    {ITEM_TYPES.map(type => {
+                                        if (filterType !== 'all' && filterType !== type) return null;
+                                        const groupItems = filteredLinked.filter(i => i.type === type);
+                                        const isFilteredView = filterType !== 'all';
+                                        const content = (
+                                            <div className={filterType === 'all' ? "bg-gray-800" : ""}>
+                                                {groupItems.map((item: any) => renderItemRow(item))}
+                                                {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos. Pulsa + para añadir.</div>}
+                                            </div>
+                                        );
+                                        if (isFilteredView) return <div key={type}>{content}</div>;
+                                        return (
+                                            <div key={type} className="border-b border-gray-700 last:border-0">
+                                                <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
+                                                    <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
+                                                    <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
+                                                    <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleQuickCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
+                                                </div>
+                                                {openGroups[type] && content}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
@@ -629,14 +660,14 @@ export default function SessionRunner() {
                             <button onClick={() => setIsLinking(false)} className="text-gray-400 hover:text-white"><FontAwesomeIcon icon={faTimes} size="lg" /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                             {ITEM_TYPES.filter(t => t !== 'character').map(type => {
+                             {ITEM_TYPES.filter(t => t !== 'character').map((type: any) => {
                                  const group = availableForLinking.filter(i => i.type === type);
                                  if (group.length === 0) return null;
                                  return (
                                      <div key={type} className="bg-gray-800/50 rounded p-2 border border-gray-800">
                                          <h3 className="text-xs font-bold uppercase text-gray-500 mb-2">{TYPE_LABELS[type]}</h3>
                                          <div className="space-y-1">
-                                            {group.map(item => {
+                                            {group.map((item: any) => {
                                                 const isLinked = session.linked_items?.includes(item.id);
                                                 return (
                                                     <div key={item.id} onClick={() => toggleLinkItem(item.id)} className={`p-2 rounded border cursor-pointer text-xs flex items-center justify-between ${isLinked ? 'bg-blue-900/30 border-blue-800' : 'bg-gray-900 border-gray-700 hover:border-gray-500'}`}>

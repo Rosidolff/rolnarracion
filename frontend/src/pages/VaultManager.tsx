@@ -3,11 +3,11 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faPlus, faShareFromSquare, faMinus, faShieldAlt, faGem, faLink, faCheckSquare, faSquare, faTag
+    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faPlus, faShareFromSquare, faMinus, faShieldAlt, faGem, faLink, faCheckSquare, faSquare, faTag, faSave, faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
-import AIAssistant from '../components/AIAssistant';
+import { useChat } from '../context/ChatContext'; 
 
 const ITEM_TYPES = ["character", "npc", "scene", "secret", "location", "monster", "item"];
 
@@ -21,7 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
     item: "ITEMS"
 };
 
-// --- COMPONENTE TAG INPUT (NUEVO) ---
+// --- COMPONENTE TAG INPUT ---
 const TagInput = ({ tags, onChange, allExistingTags }: { tags: string[], onChange: (t: string[]) => void, allExistingTags: string[] }) => {
     const [input, setInput] = useState('');
     const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -81,7 +81,6 @@ const TagInput = ({ tags, onChange, allExistingTags }: { tags: string[], onChang
     );
 };
 
-// Editor de listas con soporte para Checkbox (Objetos o Strings)
 const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: { items: any[], onChange: (val: any[]) => void, placeholder: string, icon?: any, checkable?: boolean }) => {
     const [inputValue, setInputValue] = useState("");
     
@@ -156,7 +155,6 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className }: any) =>
     return <textarea ref={textareaRef} value={value} onChange={onChange} className={`${className} overflow-hidden`} placeholder={placeholder} rows={3} style={{ minHeight: '4.5rem' }} />;
 };
 
-// Vista de solo lectura que renderiza los checks
 const CharacterFullView = ({ content }: { content: any }) => {
     
     const renderList = (list: any[]) => {
@@ -227,9 +225,9 @@ export default function VaultManager() {
     const [filterType, setFilterType] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
     
     const [activeSession, setActiveSession] = useState<any>(null);
-
     const [showFilters, setShowFilters] = useState(false);
     const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'used'>('all');
     const [subFilter, setSubFilter] = useState<string>('all');
@@ -243,15 +241,16 @@ export default function VaultManager() {
     const [editData, setEditData] = useState<any>({});
     const editRef = useRef<HTMLDivElement>(null);
 
-    // --- CALCULAR TAGS ÚNICOS PARA AUTOCOMPLETADO ---
     const allTags = Array.from(new Set(items.flatMap(i => i.tags || [])));
+
+    const { setAiContext } = useChat();
 
     useEffect(() => {
         if (id) {
-            loadItems();
-            loadActiveSession();
+            loadData();
+            setAiContext({ campaignId: id, mode: 'vault' });
         }
-    }, [id]);
+    }, [id, setAiContext]);
 
     useEffect(() => {
         const handleClickOutside = async (event: MouseEvent) => {
@@ -263,22 +262,22 @@ export default function VaultManager() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [editingId, editData]);
 
-    const loadItems = () => { if (id) api.vault.list(id).then(setItems); };
-    
-    const loadActiveSession = async () => {
+    const loadData = async () => {
         if (!id) return;
+        setLoading(true);
         try {
-            const camp = await api.campaigns.get(id);
-            let sessId = camp.active_session;
-            if (!sessId) {
-                const list = await api.sessions.list(id);
-                if (list.length > 0) sessId = list.sort((a: any, b: any) => b.number - a.number)[0].id;
-            }
-            if (sessId) {
-                const sess = await api.sessions.get(id, sessId);
-                setActiveSession(sess);
-            }
-        } catch (e) { console.error(e); }
+            const [vaultData, campData] = await Promise.all([
+                api.vault.list(id),
+                api.campaigns.get(id).then(camp => {
+                    if (camp.active_session) return api.sessions.get(id, camp.active_session);
+                    return api.sessions.list(id).then(list => list.length > 0 ? list[0] : null);
+                })
+            ]);
+            setItems(vaultData);
+            setActiveSession(campData);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleCreate = async (type: string) => {
@@ -305,7 +304,7 @@ export default function VaultManager() {
         else if (type === 'location') { defaultContent.aspects = ""; }
 
         const newItem = await api.vault.create(id, { type, content: defaultContent, tags: [], usage_count: 0 });
-        await loadItems();
+        await loadData();
         setEditingId(newItem.id);
         setEditData(newItem);
         if (filterType === 'all') setOpenGroups(prev => ({ ...prev, [type]: true }));
@@ -314,14 +313,14 @@ export default function VaultManager() {
     const handleDelete = async (itemId: string) => {
         if (!id || !confirm("¿Borrar elemento permanentemente?")) return;
         await api.vault.delete(id, itemId);
-        loadItems();
+        loadData();
     };
 
     const saveEdit = async () => {
         if (!id || !editingId) return;
         await api.vault.update(id, editingId, editData);
         setEditingId(null);
-        loadItems();
+        loadData();
     };
 
     const toggleSessionItem = async (itemId: string) => {
@@ -353,7 +352,7 @@ export default function VaultManager() {
         setActiveSession(updatedSession);
 
         await api.vault.update(id, itemId, { status: newStatus });
-        loadItems();
+        loadData();
     };
 
     const startEditing = (item: any) => { setEditingId(item.id); setEditData(JSON.parse(JSON.stringify(item))); };
@@ -423,6 +422,7 @@ export default function VaultManager() {
 
     const getItemStatus = (item: any) => {
         if (item.status === 'archived') return 'burned';
+        if (activeSession?.used_items?.includes(item.id)) return 'used'; 
         if ((item.usage_count || 0) > 0) return 'used';
         return 'new';
     };
@@ -528,7 +528,10 @@ export default function VaultManager() {
                             <div className="flex flex-wrap gap-2 items-center">
                                 <input value={editData.content.name || editData.content.title || ''} onChange={(e) => updateEditContent(item.type === 'scene' ? 'title' : 'name', e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-2 py-0.5 text-white font-bold text-sm min-w-[200px]" autoFocus />
                                 {item.type !== 'character' && renderEditInputs(item.type)}
-                                <div className="flex gap-2 ml-auto"><button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700"><FontAwesomeIcon icon={faTimes} /></button></div>
+                                <div className="flex gap-2 ml-auto">
+                                    <button onClick={saveEdit} className="text-green-400 hover:text-green-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700 mr-1"><FontAwesomeIcon icon={faSave} /></button>
+                                    <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700"><FontAwesomeIcon icon={faTimes} /></button>
+                                </div>
                             </div>
                             {item.type !== 'character' && (
                                 <>
@@ -588,41 +591,47 @@ export default function VaultManager() {
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
             
             {/* AI ASSISTANT Integration */}
-            {id && <AIAssistant campaignId={id} mode="vault" />}
+            {/* {id && <AIAssistant campaignId={id} mode="vault" />} */}
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-900">
-                <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
-                    {ITEM_TYPES.map(type => {
-                        if (filterType !== 'all' && filterType !== type) return null;
-                        const groupItems = searchFilteredItems.filter(i => i.type === type);
-                        const isFilteredView = filterType !== 'all';
-                        
-                        const content = (
-                            <div className={filterType === 'all' ? "bg-gray-800" : ""}>
-                                {groupItems.map(item => renderItemRow(item))}
-                                {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos.</div>}
-                            </div>
-                        );
-
-                        if (isFilteredView) return <div key={type}>{content}</div>;
-
-                        return (
-                            <div key={type} className="border-b border-gray-700 last:border-0">
-                                <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
-                                    <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
-                                    <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
-                                    <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
-                                    
-                                    {filterType === 'all' && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
-                                    )}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-900 animate-fade-in relative">
+                {loading ? (
+                    <div className="absolute inset-0 flex justify-center items-center text-gray-500">
+                        <FontAwesomeIcon icon={faSpinner} spin size="3x" />
+                    </div>
+                ) : (
+                    <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
+                        {ITEM_TYPES.map(type => {
+                            if (filterType !== 'all' && filterType !== type) return null;
+                            const groupItems = searchFilteredItems.filter(i => i.type === type);
+                            const isFilteredView = filterType !== 'all';
+                            
+                            const content = (
+                                <div className={filterType === 'all' ? "bg-gray-800" : ""}>
+                                    {groupItems.map(item => renderItemRow(item))}
+                                    {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos.</div>}
                                 </div>
-                                {openGroups[type] && content}
-                            </div>
-                        );
-                    })}
-                    {searchFilteredItems.length === 0 && filterType === 'all' && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos coincidentes.</div>}
-                </div>
+                            );
+
+                            if (isFilteredView) return <div key={type}>{content}</div>;
+
+                            return (
+                                <div key={type} className="border-b border-gray-700 last:border-0">
+                                    <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
+                                        <FontAwesomeIcon icon={openGroups[type] ? faChevronDown : faChevronRight} className="text-white text-xs" />
+                                        <span className="text-sm font-bold uppercase text-white tracking-wider drop-shadow-sm">{TYPE_LABELS[type]}</span>
+                                        <span className="text-[10px] text-gray-300 bg-gray-600 px-2 py-0.5 rounded-full ml-2">({groupItems.length})</span>
+                                        
+                                        {filterType === 'all' && (
+                                            <button onClick={(e) => { e.stopPropagation(); handleCreate(type); }} className="ml-auto text-gray-400 hover:text-white bg-gray-600/50 hover:bg-blue-600 w-6 h-6 rounded flex items-center justify-center transition-colors" title={`Crear ${type}`}><FontAwesomeIcon icon={faPlus} size="xs" /></button>
+                                        )}
+                                    </div>
+                                    {openGroups[type] && content}
+                                </div>
+                            );
+                        })}
+                        {searchFilteredItems.length === 0 && filterType === 'all' && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos coincidentes.</div>}
+                    </div>
+                )}
             </div>
         </div>
     );
