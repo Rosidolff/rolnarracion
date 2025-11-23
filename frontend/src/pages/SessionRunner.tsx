@@ -1,9 +1,9 @@
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faCheck, faLink, faTimes, faChevronDown, faChevronRight, faSave, faPlus, faUnlink, faBolt, faBookOpen, faPen, faShieldAlt, faGem, faCheckSquare, faSquare
+    faCheck, faLink, faTimes, faChevronDown, faChevronRight, faSave, faPlus, faUnlink, faBolt, faBookOpen, faPen, faShieldAlt, faGem, faCheckSquare, faSquare, faWandMagicSparkles, faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
@@ -33,9 +33,8 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, onBlur, a
     return <textarea ref={ref} value={value} onChange={onChange} onBlur={onBlur} className={`${className} overflow-hidden`} placeholder={placeholder} autoFocus={autoFocus} rows={1} />;
 };
 
-// Componente compartido visual para ver personaje
+// Componente visual completo para PJs (Restaurado)
 const CharacterFullView = ({ content }: { content: any }) => {
-    
     const renderList = (list: any[]) => {
         if (!list || list.length === 0) return <span className="text-gray-600 italic">-</span>;
         return (
@@ -98,10 +97,8 @@ const CharacterFullView = ({ content }: { content: any }) => {
     );
 };
 
-// Mismo ListEditor que en VaultManager para edición en sesión
 const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: { items: any[], onChange: (val: any[]) => void, placeholder: string, icon?: any, checkable?: boolean }) => {
     const [inputValue, setInputValue] = useState("");
-    
     const add = () => {
         if (inputValue.trim()) {
             const newItem = checkable ? { text: inputValue.trim(), done: false } : inputValue.trim();
@@ -109,13 +106,11 @@ const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: {
             setInputValue("");
         }
     };
-
     const remove = (index: number) => {
         const newItems = [...(items || [])];
         newItems.splice(index, 1);
         onChange(newItems);
     };
-
     const toggleCheck = (index: number) => {
         const newItems = [...(items || [])];
         const item = newItems[index];
@@ -124,7 +119,6 @@ const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: {
             onChange(newItems);
         }
     };
-
     return (
         <div className="w-full">
             <ul className="mb-1 space-y-1">
@@ -132,7 +126,6 @@ const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: {
                     const isObj = typeof item === 'object';
                     const text = isObj ? item.text : item;
                     const isDone = isObj ? item.done : false;
-
                     return (
                         <li key={i} className={`flex items-start gap-2 text-xs bg-gray-800/50 rounded px-2 py-1 ${isDone ? 'opacity-50' : ''}`}>
                              {checkable && isObj ? (
@@ -149,13 +142,7 @@ const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: {
                 })}
             </ul>
             <div className="flex gap-1">
-                <input 
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && add()}
-                    placeholder={placeholder}
-                />
+                <input className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder={placeholder} />
                 <button onClick={add} className="px-2 bg-gray-700 hover:bg-blue-600 rounded text-white transition-colors"><FontAwesomeIcon icon={faPlus} size="xs" /></button>
             </div>
         </div>
@@ -164,6 +151,7 @@ const ListEditor = ({ items, onChange, placeholder, icon, checkable = false }: {
 
 export default function SessionRunner() {
     const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
     const location = useLocation();
     const [session, setSession] = useState<any>(null);
     const [vaultItems, setVaultItems] = useState<any[]>([]);
@@ -184,6 +172,11 @@ export default function SessionRunner() {
     const editRef = useRef<HTMLDivElement>(null);
 
     const [activeNoteTab, setActiveNoteTab] = useState<string>('general');
+
+    // --- ESTADOS PARA CONCLUSIÓN Y RESUMEN (NUEVO) ---
+    const [showConclusionModal, setShowConclusionModal] = useState(false);
+    const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+    const [generatedSummary, setGeneratedSummary] = useState('');
 
     useEffect(() => {
         if (id) {
@@ -207,7 +200,6 @@ export default function SessionRunner() {
     const initSession = async () => {
         if (!id) return;
         const passedId = location.state?.sessionId;
-        
         if (passedId) {
             const s = await api.sessions.get(id, passedId);
             setSession(s);
@@ -215,10 +207,11 @@ export default function SessionRunner() {
             const sessions = await api.sessions.list(id);
             const camp = await api.campaigns.get(id);
             const activeId = camp.active_session;
-            
             let target = activeId ? sessions.find((s:any) => s.id === activeId) : null;
-            if (!target && sessions.length > 0) target = sessions[sessions.length - 1];
-            
+            if (!target && sessions.length > 0) {
+                const sorted = sessions.sort((a: any, b: any) => b.number - a.number);
+                target = sorted.find((s:any) => s.status !== 'completed') || sorted[0];
+            }
             if (target) {
                 setSession(target);
             } else {
@@ -239,10 +232,7 @@ export default function SessionRunner() {
     };
 
     const updateNote = (val: string) => {
-        const currentNotes = (typeof session.notes === 'string') 
-            ? { general: session.notes } 
-            : (session.notes || { general: '' });
-
+        const currentNotes = (typeof session.notes === 'string') ? { general: session.notes } : (session.notes || { general: '' });
         const updatedNotes = { ...currentNotes, [activeNoteTab]: val };
         updateField('notes', updatedNotes);
     };
@@ -276,52 +266,74 @@ export default function SessionRunner() {
         loadVault();
     };
 
-    const concludeSession = async () => {
-        if (!confirm("¿Concluir sesión? Esto archivará los items usados quemables.")) return;
+    // --- LÓGICA DE CONCLUSIÓN (NUEVO) ---
+    const startConclusion = async () => {
         if (!id || !session) return;
+        setShowConclusionModal(true);
+        setIsGeneratingSummary(true);
 
-        const finalDate = session.status === 'completed' ? session.date : new Date().toISOString();
+        const usedItemsList = Array.from(usedItems).map(uid => {
+            const item = vaultItems.find(i => i.id === uid);
+            return item ? `${item.type}: ${item.content.name || item.content.title}` : '';
+        }).filter(Boolean).join(', ');
+
+        const notesText = typeof session.notes === 'string' 
+            ? session.notes 
+            : Object.entries(session.notes).map(([k, v]) => `Notas de ${k === 'general' ? 'DM' : k}: ${v}`).join('\n');
+
+        const prompt = `
+        Genera un resumen narrativo y conciso de esta sesión de juego para la bitácora.
+        
+        Título de Sesión: ${session.title}
+        Notas tomadas durante la partida:
+        ${notesText}
+        
+        Elementos utilizados/revelados:
+        ${usedItemsList}
+        
+        El resumen debe servir como recordatorio (Recap) para la siguiente sesión.
+        `;
+
+        try {
+            const res = await api.ai.ask(id, prompt, 'session', session.id);
+            if (res.response) setGeneratedSummary(res.response);
+            else setGeneratedSummary("No se pudo generar el resumen automáticamente. Por favor, escríbelo manualmente.");
+        } catch (e) {
+            setGeneratedSummary("Error conectando con la IA. Escribe el resumen manualmente.");
+        } finally {
+            setIsGeneratingSummary(false);
+        }
+    };
+
+    const confirmConclusion = async () => {
+        if (!id || !session) return;
+        const finalDate = new Date().toISOString();
         const linkedIds = session.linked_items || [];
         const finalLinkedItems = [];
 
         for (const itemId of linkedIds) {
             const item = vaultItems.find(i => i.id === itemId);
             if (!item) continue;
-
             const wasUsed = usedItems.has(itemId);
-            
             if (wasUsed) {
                 finalLinkedItems.push(itemId);
                 const isReusable = REUSABLE_TYPES.includes(item.type);
                 const newUsage = (item.usage_count || 0) + 1;
-                await api.vault.update(id, itemId, { 
-                    status: isReusable ? 'reserve' : 'archived', 
-                    usage_count: newUsage 
-                });
+                await api.vault.update(id, itemId, { status: isReusable ? 'reserve' : 'archived', usage_count: newUsage });
             } else {
                 await api.vault.update(id, itemId, { status: 'reserve' });
             }
         }
 
-        const finalSession = { 
-            ...session, 
-            status: 'completed', 
-            date: finalDate, 
-            linked_items: finalLinkedItems 
-        };
-        
+        const finalSession = { ...session, status: 'completed', date: finalDate, linked_items: finalLinkedItems, summary: generatedSummary };
         await api.sessions.update(id, session.id, finalSession);
         
-        if (session.status !== 'completed') {
-            const newS = await api.sessions.create(id);
-            setSession(newS);
-            await api.campaigns.update(id, { active_session: newS.id });
-        } else {
-            setSession(finalSession);
-        }
+        const newSession = await api.sessions.create(id, { recap: generatedSummary });
+        await api.campaigns.update(id, { active_session: newSession.id });
         
-        loadVault();
-        setUsedItems(new Set());
+        setShowConclusionModal(false);
+        navigate(`/campaign/${id}/sessions`, { state: { sessionId: newSession.id } });
+        window.location.reload(); 
     };
 
     const handleQuickCreate = async (type: string) => {
@@ -332,7 +344,6 @@ export default function SessionRunner() {
         else if (type === 'character') { defaultContent.player_name = "Jugador"; defaultContent.class = ""; }
 
         const newItem = await api.vault.create(id, { type, content: defaultContent, tags: [], usage_count: 0 });
-        
         if (type !== 'character') {
             const newLinked = [...(session.linked_items || []), newItem.id];
             const updatedSession = { ...session, linked_items: newLinked };
@@ -340,7 +351,6 @@ export default function SessionRunner() {
             await api.sessions.update(id, session.id, updatedSession);
             await api.vault.update(id, newItem.id, { status: 'active' });
         }
-
         await loadVault();
         setEditingId(newItem.id);
         setEditData(newItem);
@@ -371,22 +381,11 @@ export default function SessionRunner() {
                         </div>
                          <AutoResizeTextarea value={editData.content.background || ''} onChange={(e: any) => updateItemContent('background', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300 text-xs resize-none" placeholder="Trasfondo breve..." />
                      </div>
-
                      <div className="space-y-3">
-                        <div>
-                            <h4 className="text-[10px] font-bold text-red-400 uppercase mb-1"><FontAwesomeIcon icon={faShieldAlt} /> Límites y Seguridad</h4>
-                            <ListEditor items={editData.content.safety_tools} onChange={v => updateItemContent('safety_tools', v)} placeholder="Añadir límite..." />
-                        </div>
-                        <div>
-                            <h4 className="text-[10px] font-bold text-yellow-400 uppercase mb-1"><FontAwesomeIcon icon={faGem} /> Lista de Deseos (Conseguible)</h4>
-                            <ListEditor items={editData.content.wish_list} onChange={v => updateItemContent('wish_list', v)} placeholder="Objeto deseado..." checkable={true} />
-                        </div>
-                         <div>
-                            <h4 className="text-[10px] font-bold text-blue-400 uppercase mb-1"><FontAwesomeIcon icon={faLink} /> Vínculos (Quemable)</h4>
-                            <ListEditor items={editData.content.bonds} onChange={v => updateItemContent('bonds', v)} placeholder="Vínculo con..." checkable={true} />
-                        </div>
+                        <div><h4 className="text-[10px] font-bold text-red-400 uppercase mb-1"><FontAwesomeIcon icon={faShieldAlt} /> Límites y Seguridad</h4><ListEditor items={editData.content.safety_tools} onChange={v => updateItemContent('safety_tools', v)} placeholder="Añadir límite..." /></div>
+                        <div><h4 className="text-[10px] font-bold text-yellow-400 uppercase mb-1"><FontAwesomeIcon icon={faGem} /> Lista de Deseos (Conseguible)</h4><ListEditor items={editData.content.wish_list} onChange={v => updateItemContent('wish_list', v)} placeholder="Objeto deseado..." checkable={true} /></div>
+                         <div><h4 className="text-[10px] font-bold text-blue-400 uppercase mb-1"><FontAwesomeIcon icon={faLink} /> Vínculos (Quemable)</h4><ListEditor items={editData.content.bonds} onChange={v => updateItemContent('bonds', v)} placeholder="Vínculo con..." checkable={true} /></div>
                      </div>
-                     
                      <div className="col-span-full border-t border-gray-700 pt-2">
                         <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-1">Notas Persistentes</h4>
                         <AutoResizeTextarea value={editData.content.notes || ''} onChange={(e: any) => updateItemContent('notes', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300 text-xs resize-none" placeholder="Notas generales del personaje..." />
@@ -394,7 +393,6 @@ export default function SessionRunner() {
                 </div>
             );
         }
-
         switch (type) {
             case 'npc': return <><input value={editData.content.archetype || ''} onChange={e => updateItemContent('archetype', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs w-32 text-yellow-200" placeholder="Arquetipo" /><input value={editData.content.relationship || ''} onChange={e => updateItemContent('relationship', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs w-32 text-blue-200" placeholder="Relación" /></>;
             case 'scene': return <select value={editData.content.scene_type || 'explore'} onChange={e => updateItemContent('scene_type', e.target.value)} className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-purple-200"><option value="explore">Explore</option><option value="social">Social</option><option value="combat">Combate</option></select>;
@@ -420,13 +418,13 @@ export default function SessionRunner() {
                             <button onClick={saveItemEdit} className="text-green-400 ml-auto text-sm"><FontAwesomeIcon icon={faSave} /></button>
                         </div>
                         {item.type !== 'character' && <AutoResizeTextarea value={editData.content.description || ''} onChange={(e: any) => updateItemContent('description', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm" />}
-                        
                         {item.type === 'character' && renderEditInputs('character')}
                     </div>
                 </div>
             );
         }
 
+        // ESTILOS ORIGINALES RESTAURADOS
         const rowBg = isUsed ? 'bg-amber-900/20 border-l-2 border-amber-600' : (isCharacter ? 'bg-orange-900/10 border-l-2 border-orange-500' : 'hover:bg-gray-750 border-l-2 border-transparent');
         const nameClass = isUsed ? 'text-amber-400 font-bold mr-2 transition-colors inline-flex items-center gap-1 align-baseline' : (isCharacter ? 'font-bold text-orange-300 mr-2 inline-flex items-center gap-1' : 'font-bold text-white mr-2 hover:text-blue-400 transition-colors inline-flex items-center gap-1 align-baseline');
 
@@ -438,26 +436,21 @@ export default function SessionRunner() {
                             <FontAwesomeIcon icon={faCheck} size="xs" />
                         </button>
 
-                        <div 
-                            className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${!isCharacter && isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} 
-                            onClick={() => setExpandedItems(p => ({...p, [item.id]: !p[item.id]}))}
-                        >
+                        <div className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${!isCharacter && isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedItems(p => ({...p, [item.id]: !p[item.id]}))}>
                             <span className={nameClass} onClick={(e) => {e.stopPropagation(); startEditingItem(item);}}>
                                 {name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" />
                             </span>
-                            
                             {isCharacter && (
                                 <>
                                     <span className="text-gray-500 text-[10px] mr-2">({item.content.player_name})</span>
                                     {item.content.class && <span className="text-yellow-500 text-[10px] mr-2">[{item.content.class}]</span>}
                                 </>
                             )}
-
                             {!isCharacter && (
                                 <>
                                     {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[10px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[10px] mr-2">{item.content.relationship}</span>}</>}
-                                    {item.type === 'scene' && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
-                                    {item.type === 'location' && <span className="text-green-400 font-mono text-[10px] mr-2">[{item.content.aspects}]</span>}
+                                    {item.type === 'scene' && item.content.scene_type && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
+                                    {item.type === 'location' && item.content.aspects && <span className="text-green-400 font-mono text-[10px] mr-2">[{item.content.aspects}]</span>}
                                     <span className="text-gray-500 mx-1">-</span><span className="text-gray-400 text-sm">{item.content.description}</span>
                                 </>
                             )}
@@ -470,14 +463,8 @@ export default function SessionRunner() {
                         )}
                     </div>
 
-                    {isExpanded && isCharacter && (
-                        <div className="px-10 pb-2">
-                            <CharacterFullView content={item.content} />
-                        </div>
-                    )}
-                    {isExpanded && !isCharacter && item.content.description && (
-                        <div className="px-10 pb-2 text-gray-400 text-xs whitespace-pre-wrap">{item.content.description}</div>
-                    )}
+                    {isExpanded && isCharacter && <div className="px-10 pb-2"><CharacterFullView content={item.content} /></div>}
+                    {isExpanded && !isCharacter && item.content.description && <div className="px-10 pb-2 text-gray-400 text-xs whitespace-pre-wrap">{item.content.description}</div>}
                 </div>
             </div>
         );
@@ -486,22 +473,25 @@ export default function SessionRunner() {
     if (!session) return <div className="p-8 text-white">Cargando sesión...</div>;
 
     const characters = vaultItems.filter(i => i.type === 'character');
-    const linkedItems = vaultItems.filter(i => session.linked_items?.includes(i.id));
-    
-    const displayItems = (filterType === 'character') 
-        ? characters 
-        : (filterType === 'all' ? [...characters, ...linkedItems.filter(i => i.type !== 'character')] : linkedItems.filter(i => i.type === filterType));
+    const linked = vaultItems.filter(i => session?.linked_items?.includes(i.id) && i.type !== 'character');
+    const filteredLinked = linked.filter(i => filterType === 'all' || i.type === filterType);
+    const availableForLinking = vaultItems.filter(i => (i.status === 'reserve' || session?.linked_items?.includes(i.id)) && i.type !== 'character');
 
-    const uniqueDisplayItems = Array.from(new Set(displayItems.map(i => i.id))).map(id => displayItems.find(i => i.id === id));
-
-    const filteredLinked = uniqueDisplayItems.filter(item => {
-        if (filterType === 'strong_start' || filterType === 'recap') return false;
-        if (filterType !== 'all' && item.type !== filterType) return false;
-        const txt = (item.content.name || item.content.title || '') + (item.content.description || '');
-        return txt.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-
-    const availableForLinking = vaultItems.filter(i => (i.status === 'reserve' || session.linked_items?.includes(i.id)) && i.type !== 'character');
+    if (session.status === 'completed') {
+        return (
+            <div className="h-screen flex flex-col bg-gray-900 text-gray-300 p-8 items-center justify-center">
+                <h1 className="text-3xl font-bold text-gray-500 mb-4">Sesión Archivada</h1>
+                <div className="bg-gray-800 p-6 rounded-lg max-w-2xl w-full border border-gray-700">
+                    <h2 className="text-xl text-white mb-2">{session.title}</h2>
+                    <div className="prose prose-invert prose-sm mb-6">
+                        <h3 className="text-yellow-500">Resumen (Bitácora)</h3>
+                        <div className="whitespace-pre-wrap">{session.summary}</div>
+                    </div>
+                    <button onClick={() => navigate(`/campaign/${id}/bitacora`)} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500">Ir a Bitácora</button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen flex flex-col bg-gray-900 text-gray-300 font-sans overflow-hidden">
@@ -514,111 +504,61 @@ export default function SessionRunner() {
                     searchQuery={searchQuery} 
                     onSearchChange={setSearchQuery} 
                     onAdd={() => handleQuickCreate(filterType)}
-                    extraTabs={[
-                        { id: 'strong_start', label: 'Inicio', icon: faBolt },
-                        { id: 'recap', label: 'Recap', icon: faBookOpen }
-                    ]}
+                    extraTabs={[{ id: 'strong_start', label: 'Inicio', icon: faBolt }, { id: 'recap', label: 'Recap', icon: faBookOpen }]}
                 />
             )}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
-            
-            {/* AI ASSISTANT Integration */}
             {id && session && <AIAssistant campaignId={id} mode="session" sessionId={session.id} />}
 
             <div className="h-12 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4 flex-shrink-0">
                 <div className="flex items-center gap-3 flex-1">
                     <span className="font-bold text-green-400 text-sm whitespace-nowrap">Sesión #{session.number}</span>
                     <span className="text-gray-600">|</span>
-                    <input 
-                        type="text" 
-                        value={session.title || ''} 
-                        onChange={(e) => updateField('title', e.target.value)} 
-                        onBlur={() => saveSession()}
-                        placeholder="Título de la sesión (ej: Campamento Goblin)"
-                        className="bg-transparent text-sm text-white placeholder-gray-600 focus:placeholder-gray-500 outline-none w-full max-w-md border-b border-transparent hover:border-gray-600 focus:border-green-500 transition-colors"
-                    />
-                    <span className="text-xs text-gray-500 whitespace-nowrap ml-auto mr-4">{new Date(session.date).toLocaleDateString()}</span>
+                    <input type="text" value={session.title || ''} onChange={(e) => updateField('title', e.target.value)} onBlur={() => saveSession()} placeholder="Título de la sesión..." className="bg-transparent text-sm text-white w-full outline-none" />
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => setIsLinking(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faLink} /> Recursos</button>
-                    <button onClick={concludeSession} className="bg-red-900/30 border border-red-800 hover:bg-red-900/50 text-red-200 text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faCheck} /> Concluir</button>
+                    <button onClick={startConclusion} className="bg-red-900/30 border border-red-800 hover:bg-red-900/50 text-red-200 text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faCheck} /> Concluir</button>
                 </div>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-                {/* Panel Izquierdo: Notas de Sesión con Pestañas */}
                 <div className="w-1/3 border-r border-gray-700 flex flex-col bg-gray-900">
                     <div className="flex bg-gray-800 border-b border-gray-700 overflow-x-auto custom-scrollbar">
-                        <button 
-                            onClick={() => setActiveNoteTab('general')}
-                            className={`px-3 py-2 text-xs font-bold uppercase border-r border-gray-700 whitespace-nowrap ${activeNoteTab === 'general' ? 'bg-gray-900 text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
-                        >
-                            General
-                        </button>
+                        <button onClick={() => setActiveNoteTab('general')} className={`px-3 py-2 text-xs font-bold uppercase ${activeNoteTab === 'general' ? 'bg-gray-900 text-blue-400' : 'text-gray-500'}`}>General</button>
                         {characters.map(char => (
-                            <button 
-                                key={char.id}
-                                onClick={() => setActiveNoteTab(char.id)}
-                                className={`px-3 py-2 text-xs font-bold uppercase border-r border-gray-700 whitespace-nowrap flex items-center gap-1 ${activeNoteTab === char.id ? 'bg-gray-900 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
-                                title={char.content.name}
-                            >
-                                {char.content.name.split(' ')[0]}
-                            </button>
+                            <button key={char.id} onClick={() => setActiveNoteTab(char.id)} className={`px-3 py-2 text-xs font-bold uppercase ${activeNoteTab === char.id ? 'bg-gray-900 text-purple-400' : 'text-gray-500'}`}>{char.content.name.split(' ')[0]}</button>
                         ))}
                     </div>
-                    
-                    <div className="flex-1 flex flex-col relative">
-                         <textarea 
-                            value={getNoteContent()} 
-                            onChange={e => updateNote(e.target.value)} 
-                            onBlur={() => saveSession()} 
-                            className="flex-1 w-full bg-gray-900 p-4 text-gray-300 font-mono text-sm leading-relaxed resize-none focus:outline-none" 
-                            placeholder={activeNoteTab === 'general' ? "Notas generales de la sesión..." : `Notas sobre ${characters.find(c => c.id === activeNoteTab)?.content.name}...`} 
-                            spellCheck={false} 
-                        />
-                        {activeNoteTab !== 'general' && (
-                            <div className="absolute bottom-2 right-2 opacity-50 hover:opacity-100">
-                                <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded border border-gray-700 pointer-events-none">
-                                    Nota de {characters.find(c => c.id === activeNoteTab)?.content.player_name}
-                                </span>
-                            </div>
-                        )}
-                    </div>
+                    <textarea value={getNoteContent()} onChange={e => updateNote(e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-900 p-4 text-gray-300 font-mono text-sm resize-none focus:outline-none" placeholder="Notas..." />
                 </div>
 
-                {/* Panel Derecho: Listado de Items y PJs */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-900 p-2 relative">
-                    
                     {filterType === 'strong_start' && (
                         <div className="h-full flex flex-col">
                             <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBolt} /> Inicio Fuerte</h3>
-                            <AutoResizeTextarea value={session.strong_start || ''} onChange={(e: any) => updateField('strong_start', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200 resize-none focus:border-purple-500 focus:outline-none" placeholder="Escribe cómo empieza la sesión..." autoFocus />
+                            <AutoResizeTextarea value={session.strong_start || ''} onChange={(e: any) => updateField('strong_start', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
                         </div>
                     )}
-
                     {filterType === 'recap' && (
                         <div className="h-full flex flex-col">
-                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBookOpen} /> Recap</h3>
-                            <AutoResizeTextarea value={session.recap || ''} onChange={(e: any) => updateField('recap', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200 resize-none focus:border-purple-500 focus:outline-none" placeholder="Resumen de lo anterior..." autoFocus />
+                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><FontAwesomeIcon icon={faBookOpen} /> Recap (Anterior)</h3>
+                            <AutoResizeTextarea value={session.recap || ''} onChange={(e: any) => updateField('recap', e.target.value)} onBlur={() => saveSession()} className="flex-1 w-full bg-gray-800/50 p-4 rounded border border-gray-700 text-sm text-gray-200" />
                         </div>
                     )}
-
                     {(filterType !== 'strong_start' && filterType !== 'recap') && (
                         <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden shadow-xl">
                             {ITEM_TYPES.map(type => {
                                 if (filterType !== 'all' && filterType !== type) return null;
                                 const groupItems = filteredLinked.filter(i => i.type === type);
                                 const isFilteredView = filterType !== 'all';
-
                                 const content = (
                                     <div className={filterType === 'all' ? "bg-gray-800" : ""}>
                                         {groupItems.map(item => renderItemRow(item))}
                                         {groupItems.length === 0 && isFilteredView && <div className="p-4 text-center text-gray-500 text-xs italic">No hay elementos. Pulsa + para añadir.</div>}
                                     </div>
                                 );
-
                                 if (isFilteredView) return <div key={type}>{content}</div>;
-
                                 return (
                                     <div key={type} className="border-b border-gray-700 last:border-0">
                                         <div onClick={() => setOpenGroups(p => ({...p, [type]: !p[type]}))} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 cursor-pointer flex items-center gap-2 select-none border-t border-gray-600 first:border-t-0 shadow-inner group">
@@ -631,11 +571,55 @@ export default function SessionRunner() {
                                     </div>
                                 );
                             })}
-                            {filteredLinked.length === 0 && filterType === 'all' && <div className="p-4 text-center text-gray-500 text-xs italic">Mesa vacía.</div>}
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* MODAL DE CIERRE DE SESIÓN */}
+            {showConclusionModal && (
+                <div className="fixed inset-0 bg-black/90 z-50 flex justify-center items-center p-4">
+                    <div className="bg-gray-800 border border-gray-600 rounded-lg w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-yellow-500 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faWandMagicSparkles} /> Concluir Sesión & Generar Bitácora
+                            </h2>
+                            <button onClick={() => setShowConclusionModal(false)} className="text-gray-400 hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
+                        </div>
+                        
+                        <div className="p-6 flex-1 overflow-y-auto">
+                            {isGeneratingSummary ? (
+                                <div className="flex flex-col items-center justify-center h-40 text-blue-400">
+                                    <FontAwesomeIcon icon={faSpinner} spin size="3x" className="mb-4" />
+                                    <p className="animate-pulse">La IA está redactando el resumen de la partida...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <p className="text-sm text-gray-400">
+                                        Revisa y edita el resumen generado. Este texto se guardará en la <strong>Bitácora</strong> y se usará como <strong>Recap</strong> automático para la próxima sesión.
+                                    </p>
+                                    <textarea 
+                                        value={generatedSummary}
+                                        onChange={(e) => setGeneratedSummary(e.target.value)}
+                                        className="w-full h-64 bg-gray-900 border border-gray-600 rounded p-4 text-gray-200 leading-relaxed focus:border-yellow-500 outline-none resize-none custom-scrollbar"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t border-gray-700 flex justify-end gap-3 bg-gray-800 rounded-b-lg">
+                            <button onClick={() => setShowConclusionModal(false)} className="px-4 py-2 text-gray-300 hover:text-white">Cancelar</button>
+                            <button 
+                                onClick={confirmConclusion} 
+                                disabled={isGeneratingSummary || !generatedSummary.trim()}
+                                className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                <FontAwesomeIcon icon={faCheck} /> Confirmar y Crear Siguiente Sesión
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isLinking && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-8">

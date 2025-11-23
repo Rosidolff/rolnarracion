@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faBoxOpen, faDiceD20, faInfoCircle, faSearch, faSignOutAlt, faPlus, faFilter, faUser
+    faBoxOpen, faDiceD20, faInfoCircle, faSearch, faSignOutAlt, faPlus, faFilter, faUser, faBook
 } from '@fortawesome/free-solid-svg-icons';
 import { api } from '../services/api';
 
@@ -50,8 +50,10 @@ export default function TopNavBar({
             ]);
             let targetSessionId = campaign.active_session;
             if (!targetSessionId && sessions.length > 0) {
+                // Buscar la última no completada
                 const sorted = sessions.sort((a: any, b: any) => b.number - a.number);
-                targetSessionId = sorted[sorted.length - 1].id; // Última sesión
+                const active = sorted.find((s: any) => s.status !== 'completed');
+                targetSessionId = active ? active.id : sorted[sorted.length - 1].id;
             }
             if (targetSessionId) {
                 navigate(`/campaign/${campaignId}/sessions`, { state: { sessionId: targetSessionId } });
@@ -79,12 +81,10 @@ export default function TopNavBar({
                     let baseClasses = "col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ";
                     
                     if (isActive) {
-                        // Activo: Azul estándar vs Naranja quemado (menos chillón)
                         baseClasses += isChar 
                             ? 'bg-orange-700 border-orange-600 text-white' 
                             : 'bg-blue-600 border-blue-500 text-white';
                     } else {
-                        // Inactivo: Gris estándar vs Gris anaranjado sutil
                         baseClasses += isChar 
                             ? 'bg-orange-900/20 border-orange-900/30 text-gray-300 hover:bg-orange-900/40 hover:text-white' 
                             : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white';
@@ -146,6 +146,12 @@ export default function TopNavBar({
                 <Link to={`/campaign/${campaignId}/vault`} className="flex flex-col justify-center items-center px-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded border border-gray-700 transition-colors w-14">
                     <FontAwesomeIcon icon={faBoxOpen} /> <span className="text-[9px] font-bold uppercase mt-1">Vault</span>
                 </Link>
+                
+                {/* BOTÓN BITÁCORA AÑADIDO SIN ROMPER EL DISEÑO */}
+                <Link to={`/campaign/${campaignId}/bitacora`} className="flex flex-col justify-center items-center px-3 bg-gray-800 hover:bg-gray-700 text-yellow-500 hover:text-yellow-300 rounded border border-gray-700 transition-colors w-14">
+                    <FontAwesomeIcon icon={faBook} /> <span className="text-[9px] font-bold uppercase mt-1">Bitácora</span>
+                </Link>
+
                 <button onClick={handleGoToSession} className="flex flex-col justify-center items-center px-3 bg-gray-800 hover:bg-gray-700 text-green-400 hover:text-green-300 rounded border border-gray-700 transition-colors w-14">
                     <FontAwesomeIcon icon={faDiceD20} /> <span className="text-[9px] font-bold uppercase mt-1">Sesión</span>
                 </button>

@@ -34,6 +34,9 @@ def create_session(campaign_id):
     campaign_path = service._get_campaign_path(campaign_id)
     sessions_path = os.path.join(campaign_path, "sessions")
     
+    # Data opcional (ej: recap de la sesión anterior)
+    req_data = request.get_json() or {}
+    
     # Calculate next number
     existing_sessions = []
     if os.path.exists(sessions_path):
@@ -50,10 +53,11 @@ def create_session(campaign_id):
     session = {
         "id": session_id,
         "number": next_number,
-        "title": "", # Nuevo campo Título
+        "title": "", 
         "date": datetime.now().isoformat(),
         "strong_start": "",
-        "recap": "",
+        "recap": req_data.get('recap', ""), # Recibir recap automático
+        "summary": "", # Inicializar vacío
         "notes": "",
         "linked_items": [],
         "status": "planned"
@@ -102,7 +106,7 @@ def update_session(campaign_id, session_id):
     current_session = service.load_json(file_path)
     
     # Update fields
-    fields = ['title', 'strong_start', 'recap', 'notes', 'linked_items', 'status']
+    fields = ['title', 'strong_start', 'recap', 'summary', 'notes', 'linked_items', 'status']
     for field in fields:
         if field in data:
             current_session[field] = data[field]
@@ -112,12 +116,12 @@ def update_session(campaign_id, session_id):
 
 @session_bp.route('/<campaign_id>/sessions/<session_id>', methods=['DELETE'])
 def delete_session(campaign_id, session_id):
+    # Nota: El frontend evitará borrar sesiones archivadas, pero mantenemos esto para limpieza si es necesario
     service = get_file_service()
     campaign_path = service._get_campaign_path(campaign_id)
     sessions_path = os.path.join(campaign_path, "sessions")
     vault_path = os.path.join(campaign_path, "vault")
     
-    # 1. Encontrar el archivo de sesión
     target_file = None
     for filename in os.listdir(sessions_path):
         if filename.endswith(f"_{session_id}.json"):
@@ -127,14 +131,12 @@ def delete_session(campaign_id, session_id):
     if not target_file:
         return jsonify({"error": "Session not found"}), 404
 
-    # 2. Cargar sesión para ver items vinculados
     session_path = os.path.join(sessions_path, target_file)
     session_data = service.load_json(session_path)
     
-    # 3. Restaurar items al Vault (status: reserve)
+    # Restaurar items al Vault si la sesión se borra
     if session_data and 'linked_items' in session_data:
         for item_id in session_data['linked_items']:
-            # Buscar archivo del item en el vault
             item_file_name = None
             if os.path.exists(vault_path):
                 for v_file in os.listdir(vault_path):
@@ -149,7 +151,6 @@ def delete_session(campaign_id, session_id):
                     item_data['status'] = 'reserve'
                     service.save_json(item_path, item_data)
 
-    # 4. Borrar el archivo de sesión
     os.remove(session_path)
     
     return jsonify({"message": "Session deleted and items returned to vault"}), 200

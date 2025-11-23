@@ -32,10 +32,10 @@ export const api = {
     },
    sessions: {
         list: (campaignId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions`).then(res => res.json()),
-        create: (campaignId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions`, {
+        create: (campaignId: string, data?: any) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify(data || {})
         }).then(res => res.json()),
         get: (campaignId: string, sessionId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions/${sessionId}`).then(res => res.json()),
         update: (campaignId: string, sessionId: string, data: any) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions/${sessionId}`, {

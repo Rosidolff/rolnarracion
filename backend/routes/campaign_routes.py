@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from services.file_service import FileService
 from services.id_service import generate_id
 import os
+from datetime import datetime
 
 campaign_bp = Blueprint('campaigns', __name__)
 
@@ -26,6 +27,7 @@ def create_campaign():
     
     base_path = service.create_campaign_structure(campaign_id)
     
+    # 1. Crear Metadatos de Campaña
     metadata = {
         "id": campaign_id,
         "title": data['title'],
@@ -34,10 +36,31 @@ def create_campaign():
         "truths": data.get('truths', []),
         "fronts": data.get('fronts', []),
         "safety_tools": data.get('safety_tools', ''),
-        "framework": data.get('framework', ''), # Nuevo campo: Contexto del mundo
+        "framework": data.get('framework', ''),
         "active_session": None
     }
+    service.save_json(os.path.join(base_path, "metadata.json"), metadata)
     
+    # 2. Crear Sesión Inicial Automáticamente
+    session_id = generate_id()
+    session_01 = {
+        "id": session_id,
+        "number": 1,
+        "title": "El Comienzo",
+        "date": datetime.now().isoformat(),
+        "strong_start": "",
+        "recap": "",
+        "summary": "", # Campo nuevo para la Bitácora
+        "notes": "",
+        "linked_items": [],
+        "status": "planned"
+    }
+    sessions_path = os.path.join(base_path, "sessions")
+    session_filename = f"session_01_{session_id}.json"
+    service.save_json(os.path.join(sessions_path, session_filename), session_01)
+    
+    # 3. Asignar Sesión Activa
+    metadata['active_session'] = session_id
     service.save_json(os.path.join(base_path, "metadata.json"), metadata)
     
     return jsonify(metadata), 201

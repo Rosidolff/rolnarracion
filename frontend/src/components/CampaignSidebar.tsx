@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faCircle, faUser, faLevelUpAlt } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faCircle, faUser, faLevelUpAlt, faBook } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
 interface CampaignSidebarProps {
@@ -91,6 +91,7 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
 
         setMetadata({ ...meta, truths: truths.slice(0, 6), fronts });
         const sess = await api.sessions.list(campaignId);
+        // Ordenar: más recientes arriba
         setSessions(sess.sort((a: any, b: any) => b.number - a.number));
 
         const vault = await api.vault.list(campaignId);
@@ -162,31 +163,28 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         persistChanges({ ...metadata, fronts: newFronts });
     };
 
+    const goToSession = (session: any) => {
+        if (session.status === 'completed') {
+            navigate(`/campaign/${campaignId}/bitacora`); // Ir a bitácora para ver resumen
+        } else {
+            navigate(`/campaign/${campaignId}/sessions`, { state: { sessionId: session.id } });
+        }
+        onClose();
+    };
+
     const setActiveSession = async (sessionId: string) => {
         const updated = { ...metadata, active_session: sessionId };
         persistChanges(updated);
     };
 
-    const goToSession = (sessionId: string) => {
-        navigate(`/campaign/${campaignId}/sessions`, { state: { sessionId } });
-        onClose();
-    };
-
-    const handleCreateSession = async () => {
-        const newSession = await api.sessions.create(campaignId);
-        await loadData(); 
-        goToSession(newSession.id); 
-    };
-
-    const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    const handleDeleteSession = async (session: any, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (session.status === 'completed') {
+            alert("Las sesiones completadas están archivadas y no se pueden borrar.");
+            return;
+        }
         if (confirm("¿Estás seguro de eliminar esta sesión? Todos los recursos vinculados volverán al Vault.")) {
-            await api.sessions.delete(campaignId, sessionId);
-            if (metadata.active_session === sessionId) {
-                 const newMeta = { ...metadata, active_session: null };
-                 setMetadata(newMeta);
-                 await api.campaigns.update(campaignId, newMeta);
-            }
+            await api.sessions.delete(campaignId, session.id);
             loadData();
         }
     };
@@ -307,7 +305,6 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                     <section className="pt-4 border-t border-gray-800">
                          <div className="flex justify-between items-center mb-3">
                              <h3 className="text-xs font-bold text-green-500 uppercase flex items-center gap-2"><FontAwesomeIcon icon={faHistory} /> Cronología</h3>
-                             <button onClick={handleCreateSession} className="text-gray-500 hover:text-green-400 text-xs"><FontAwesomeIcon icon={faPlus} /></button>
                          </div>
                          <div className="space-y-2">
                             {sessions.length === 0 ? (
@@ -316,23 +313,36 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                 sessions.map(s => {
                                     const isActive = metadata?.active_session === s.id;
                                     return (
-                                        <div key={s.id} className="flex items-center justify-between group bg-gray-800/30 p-2 rounded border border-transparent hover:border-gray-700">
-                                            <div className="cursor-pointer flex-1" onClick={() => goToSession(s.id)}>
+                                        <div key={s.id} className={`flex items-center justify-between group p-2 rounded border border-transparent hover:border-gray-700 ${s.status === 'completed' ? 'bg-gray-900 opacity-80 hover:opacity-100' : 'bg-gray-800/30'}`}>
+                                            <div className="cursor-pointer flex-1" onClick={() => goToSession(s)}>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-bold text-gray-300 group-hover:text-green-400">Sesión #{s.number}</span>
-                                                    {s.status === 'completed' && <span className="text-[9px] text-gray-500 font-normal border border-gray-700 px-1 rounded">Fin</span>}
+                                                    <span className={`text-xs font-bold ${s.status === 'completed' ? 'text-gray-500' : 'text-gray-300 group-hover:text-green-400'}`}>Sesión #{s.number}</span>
+                                                    {s.status === 'completed' ? (
+                                                        <span className="text-[9px] text-gray-500 font-normal border border-gray-700 px-1 rounded bg-gray-800">Archivada</span>
+                                                    ) : (
+                                                        <span className="text-[9px] text-green-500 font-normal border border-green-900 px-1 rounded bg-green-900/20">Activa</span>
+                                                    )}
                                                 </div>
                                                 <div className="text-[11px] text-gray-400 font-italic truncate">{s.title || "Sin título..."}</div>
                                                 <div className="text-[9px] text-gray-600">{new Date(s.date).toLocaleDateString()}</div>
                                             </div>
                                             
                                             <div className="flex items-center gap-1">
-                                                <button onClick={() => setActiveSession(s.id)} className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`} title={isActive ? "Sesión Activa" : "Marcar como Activa"}>
-                                                    <FontAwesomeIcon icon={isActive ? faStar : faCheck} />
-                                                </button>
-                                                <button onClick={(e) => handleDeleteSession(s.id, e)} className="p-1.5 rounded text-gray-600 hover:bg-red-900/50 hover:text-red-400 transition-colors" title="Borrar Sesión">
-                                                    <FontAwesomeIcon icon={faTrash} size="xs"/>
-                                                </button>
+                                                {s.status !== 'completed' && (
+                                                    <button onClick={() => setActiveSession(s.id)} className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`} title={isActive ? "Sesión Activa" : "Marcar como Activa"}>
+                                                        <FontAwesomeIcon icon={isActive ? faStar : faCheck} />
+                                                    </button>
+                                                )}
+                                                
+                                                {s.status !== 'completed' ? (
+                                                    <button onClick={(e) => handleDeleteSession(s, e)} className="p-1.5 rounded text-gray-600 hover:bg-red-900/50 hover:text-red-400 transition-colors" title="Borrar Sesión">
+                                                        <FontAwesomeIcon icon={faTrash} size="xs"/>
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => goToSession(s)} className="p-1.5 rounded text-gray-600 hover:text-blue-400 transition-colors" title="Ver en Bitácora">
+                                                        <FontAwesomeIcon icon={faBook} size="xs"/>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     );
