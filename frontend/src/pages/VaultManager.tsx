@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faSave, faPlus, faBars, faFilter, faShareFromSquare, faMinus
+    faTrash, faTimes, faChevronDown, faChevronRight, faPen, faPlus, faShareFromSquare, faMinus
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
@@ -33,7 +33,8 @@ export default function VaultManager() {
 
     // Filter States
     const [showFilters, setShowFilters] = useState(false);
-    const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'used' | 'burned'>('all');
+    // Eliminada opción 'burned' del tipo, ya que se agrupa en 'used'
+    const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'used'>('all');
     const [subFilter, setSubFilter] = useState<string>('all');
 
     const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -118,21 +119,17 @@ export default function VaultManager() {
         let newStatus;
 
         if (isLinked) {
-            // Desvincular (sacar de sesión)
             newLinked = activeSession.linked_items.filter((i: string) => i !== itemId);
             newStatus = 'reserve';
         } else {
-            // Vincular (meter en sesión)
             newLinked = [...(activeSession.linked_items || []), itemId];
             newStatus = 'active';
         }
 
-        // Actualizar Sesión
         const updatedSession = { ...activeSession, linked_items: newLinked };
         await api.sessions.update(id, activeSession.id, updatedSession);
         setActiveSession(updatedSession);
 
-        // Actualizar Item en Vault
         await api.vault.update(id, itemId, { status: newStatus });
         loadItems();
     };
@@ -165,40 +162,50 @@ export default function VaultManager() {
         const isExpanded = expandedItems[item.id];
         const name = item.content.name || item.content.title || "Sin nombre";
         const status = getItemStatus(item);
-        // Comprobamos si está en la sesión activa actual
         const inSession = activeSession?.linked_items?.includes(item.id);
 
-        return (
-            <div className="flex items-center gap-3 min-h-[1.5rem]">
-                <div className="flex-shrink-0 flex items-center gap-1">
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="text-gray-700 hover:text-red-500 p-1 transition-colors" title="Eliminar">
-                        <FontAwesomeIcon icon={faTrash} size="xs" />
-                    </button>
-                    {/* Botón Toggle Sesión */}
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); toggleSessionItem(item.id); }} 
-                        className={`p-1 transition-colors ${inSession ? 'text-red-400 hover:text-red-300' : 'text-gray-600 hover:text-blue-400'}`}
-                        title={inSession ? "Quitar de Sesión Activa" : "Añadir a Sesión Activa"}
-                    >
-                        <FontAwesomeIcon icon={inSession ? faMinus : faShareFromSquare} size="xs" />
-                    </button>
-                </div>
+        let rowClass = "border-b border-gray-800 last:border-0 transition-colors ";
+        let nameClass = "font-bold mr-2 hover:text-white transition-colors inline-flex items-center gap-1 align-baseline cursor-pointer ";
 
-                <div className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !p[item.id] }))}>
-                    <span className="font-bold text-gray-200 hover:text-blue-400 transition-colors mr-2 inline-flex items-center gap-1 align-baseline" onClick={(e) => { e.stopPropagation(); startEditing(item); }}>
-                        {name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" />
-                    </span>
-                    {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[11px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[11px] mr-2">{item.content.relationship}</span>}</>}
-                    {item.type === 'scene' && item.content.scene_type && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
-                    {item.type === 'location' && item.content.aspects && <span className="text-green-400 font-mono text-[11px] mr-2">[{item.content.aspects}]</span>}
-                    <span className="text-gray-600 mr-2">-</span><span className="text-gray-400">{item.content.description}</span>
-                </div>
-                
-                <div className="flex-shrink-0 flex items-center gap-2">
-                    {inSession && <span className="text-[9px] bg-green-900 text-green-100 px-1 py-0 rounded uppercase font-bold tracking-wider">EN SESIÓN</span>}
-                    {!inSession && status === 'burned' && <span className="text-[9px] bg-red-900/50 text-red-300 px-1 py-0 rounded uppercase font-bold tracking-wider">QUEMADO</span>}
-                    {!inSession && status === 'used' && <span className="text-[9px] bg-blue-900/50 text-blue-300 px-1 py-0 rounded uppercase font-bold tracking-wider">USADO</span>}
-                    {!inSession && status === 'new' && <span className="text-[9px] bg-yellow-900/50 text-yellow-300 px-1 py-0 rounded uppercase font-bold tracking-wider">NUEVO</span>}
+        if (inSession) {
+            rowClass += "bg-green-900/10 hover:bg-green-900/20 border-l-2 border-l-green-600";
+            nameClass += "text-green-400";
+        } else if (status === 'burned') {
+            rowClass += "bg-blue-900/10 hover:bg-blue-900/20 border-l-2 border-l-blue-900 opacity-60";
+            nameClass += "text-blue-400";
+        } else if (status === 'used') {
+            rowClass += "bg-blue-900/10 hover:bg-blue-900/20 border-l-2 border-l-blue-500";
+            nameClass += "text-blue-400";
+        } else {
+            rowClass += "bg-transparent hover:bg-gray-750";
+            nameClass += "text-gray-200";
+        }
+
+        return (
+            <div className={rowClass}>
+                <div className="flex items-center gap-3 min-h-[1.5rem] py-1 px-2">
+                    <div className="flex-shrink-0 flex items-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} className="text-gray-700 hover:text-red-500 p-1 transition-colors" title="Eliminar">
+                            <FontAwesomeIcon icon={faTrash} size="xs" />
+                        </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); toggleSessionItem(item.id); }} 
+                            className={`p-1 transition-colors ${inSession ? 'text-green-400 hover:text-green-300' : 'text-gray-600 hover:text-blue-400'}`}
+                            title={inSession ? "Quitar de Sesión Activa" : "Añadir a Sesión Activa"}
+                        >
+                            <FontAwesomeIcon icon={inSession ? faMinus : faShareFromSquare} size="xs" />
+                        </button>
+                    </div>
+
+                    <div className={`flex-1 min-w-0 text-sm leading-tight cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !p[item.id] }))}>
+                        <span className={nameClass} onClick={(e) => { e.stopPropagation(); startEditing(item); }}>
+                            {name} <FontAwesomeIcon icon={faPen} className="text-[9px] opacity-0 hover:opacity-50" />
+                        </span>
+                        {item.type === 'npc' && <>{item.content.archetype && <span className="text-yellow-500 font-mono text-[11px] mr-2">[{item.content.archetype}]</span>}{item.content.relationship && <span className="text-blue-300 italic text-[11px] mr-2">{item.content.relationship}</span>}</>}
+                        {item.type === 'scene' && item.content.scene_type && <span className="text-purple-400 text-[10px] uppercase font-bold border border-purple-900 px-1 rounded mr-2 align-middle">{item.content.scene_type}</span>}
+                        {item.type === 'location' && item.content.aspects && <span className="text-green-400 font-mono text-[11px] mr-2">[{item.content.aspects}]</span>}
+                        <span className="text-gray-600 mr-2">-</span><span className="text-gray-400">{item.content.description}</span>
+                    </div>
                 </div>
             </div>
         );
@@ -206,25 +213,24 @@ export default function VaultManager() {
 
     const renderItemRow = (item: any) => {
         const isEditing = editingId === item.id;
-        return (
-            <div key={item.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-750 transition-colors">
-                <div className="py-1 px-2">
-                    {isEditing ? (
-                        <div ref={editRef} className="flex items-start gap-3 py-1 bg-gray-800/50 rounded -ml-2 -mr-2 px-2">
-                            <div className="pt-1.5 flex-shrink-0"><button onClick={() => handleDelete(item.id)} className="text-gray-600 hover:text-red-500 p-1"><FontAwesomeIcon icon={faTrash} size="xs" /></button></div>
-                            <div className="flex flex-col gap-1 w-full">
-                                <div className="flex flex-wrap gap-2 items-center">
-                                    <input value={editData.content.name || editData.content.title || ''} onChange={(e) => updateEditContent(item.type === 'scene' ? 'title' : 'name', e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-2 py-0.5 text-white font-bold text-sm min-w-[200px]" autoFocus />
-                                    {renderEditInputs(item.type)}
-                                    <div className="flex gap-2 ml-auto"><button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700"><FontAwesomeIcon icon={faTimes} /></button></div>
-                                </div>
-                                <AutoResizeTextarea value={editData.content.description || ''} onChange={(e: any) => updateEditContent('description', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm font-sans resize-none" placeholder="Descripción..." />
+        if (isEditing) {
+            return (
+                <div key={item.id} className="border-b border-gray-800 py-1 px-2 bg-gray-800/50">
+                    <div ref={editRef} className="flex items-start gap-3 rounded -ml-2 -mr-2 px-2">
+                        <div className="pt-1.5 flex-shrink-0"><button onClick={() => handleDelete(item.id)} className="text-gray-600 hover:text-red-500 p-1"><FontAwesomeIcon icon={faTrash} size="xs" /></button></div>
+                        <div className="flex flex-col gap-1 w-full">
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <input value={editData.content.name || editData.content.title || ''} onChange={(e) => updateEditContent(item.type === 'scene' ? 'title' : 'name', e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-2 py-0.5 text-white font-bold text-sm min-w-[200px]" autoFocus />
+                                {renderEditInputs(item.type)}
+                                <div className="flex gap-2 ml-auto"><button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-200 text-xs px-2 py-0.5 bg-gray-900 rounded border border-gray-700"><FontAwesomeIcon icon={faTimes} /></button></div>
                             </div>
+                            <AutoResizeTextarea value={editData.content.description || ''} onChange={(e: any) => updateEditContent('description', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm font-sans resize-none" placeholder="Descripción..." />
                         </div>
-                    ) : ( <ReadOnlyItemRow item={item} /> )}
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        }
+        return <ReadOnlyItemRow key={item.id} item={item} />;
     };
 
     const searchFilteredItems = items.filter(item => {
@@ -232,7 +238,14 @@ export default function VaultManager() {
         if (!text.includes(searchQuery.toLowerCase())) return false;
 
         const status = getItemStatus(item);
-        if (statusFilter !== 'all' && status !== statusFilter) return false;
+        if (statusFilter !== 'all') {
+            if (statusFilter === 'used') {
+                // El filtro 'used' ahora engloba 'used' Y 'burned'
+                if (status !== 'used' && status !== 'burned') return false;
+            } else if (status !== statusFilter) {
+                return false;
+            }
+        }
 
         if (subFilter !== 'all' && item.type === 'scene' && item.content.scene_type !== subFilter) return false;
 

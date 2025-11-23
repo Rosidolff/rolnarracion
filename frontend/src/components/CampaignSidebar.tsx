@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faSkull } from '@fortawesome/free-solid-svg-icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { faTimes, faHistory, faPlus, faTrash, faCheck, faStar, faSkull, faCircle } from '@fortawesome/free-solid-svg-icons';
+import { useNavigate } from 'react-router-dom';
 
 interface CampaignSidebarProps {
     isOpen: boolean;
@@ -14,7 +14,6 @@ const PLACEHOLDERS_TRUTHS = ["Verdad Social/Económica", "Verdad Política/Amena
 
 const MoodsEditor = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [inputValue, setInputValue] = useState("");
-    // Parseamos tags de forma segura
     const tags = value ? value.split(',').map(t => t.trim()).filter(t => t) : [];
 
     const removeTag = (index: number) => {
@@ -37,14 +36,14 @@ const MoodsEditor = ({ value, onChange }: { value: string, onChange: (val: strin
     };
 
     return (
-        <div className="w-full bg-gray-800 border border-gray-700 rounded p-1.5 flex flex-wrap gap-1 focus-within:border-pink-500/50 transition-colors">
+        <div className="w-full bg-transparent border-b border-gray-800 hover:border-gray-700 flex flex-wrap gap-1 focus-within:border-pink-500 transition-colors p-1.5">
             {tags.map((tag, i) => (
                 <span key={i} className="bg-pink-900/30 text-pink-300 text-[10px] px-2 py-0.5 rounded border border-pink-800/50 flex items-center gap-1">
                     {tag} <button onClick={() => removeTag(i)} className="hover:text-white"><FontAwesomeIcon icon={faTimes} size="xs"/></button>
                 </span>
             ))}
             <input 
-                className="flex-1 bg-transparent text-sm text-gray-200 outline-none min-w-[80px] px-1"
+                className="flex-1 bg-transparent text-sm text-gray-300 outline-none min-w-[80px] px-1"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -81,9 +80,17 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         const meta = await api.campaigns.get(campaignId);
         const truths = meta.truths || [];
         while (truths.length < 6) truths.push("");
-        setMetadata({ ...meta, truths: truths.slice(0, 6) });
+        
+        // Normalizar Frentes: Convertir strings antiguos a objetos {text, done}
+        const fronts = (meta.fronts || []).map((f: any) => ({
+            ...f,
+            grim_portents: (f.grim_portents || ["", "", ""]).map((gp: any) => 
+                typeof gp === 'string' ? { text: gp, done: false } : gp
+            )
+        }));
+
+        setMetadata({ ...meta, truths: truths.slice(0, 6), fronts });
         const sess = await api.sessions.list(campaignId);
-        // Orden descendente para ver la última primero en la cronología
         setSessions(sess.sort((a: any, b: any) => b.number - a.number));
     };
 
@@ -114,7 +121,12 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
     };
     
     const addFront = () => {
-        const newFronts = [...(metadata.fronts || []), { name: '', goal: '', grim_portents: ["", "", ""] }];
+        // Inicializamos con objetos vacíos
+        const newFronts = [...(metadata.fronts || []), { 
+            name: '', 
+            goal: '', 
+            grim_portents: [{text: "", done: false}, {text: "", done: false}, {text: "", done: false}] 
+        }];
         persistChanges({ ...metadata, fronts: newFronts });
     };
 
@@ -124,13 +136,30 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         persistChanges({ ...metadata, fronts: newFronts });
     };
 
-    const updateGrimPortent = (frontIndex: number, portentIndex: number, val: string) => {
+    const updateGrimPortent = (frontIndex: number, portentIndex: number, field: 'text' | 'done', val: any) => {
         const newFronts = [...(metadata.fronts || [])];
-        // Asegurar que existe el array
-        const portents = [...(newFronts[frontIndex].grim_portents || ["", "", ""])];
-        portents[portentIndex] = val;
+        const portents = [...newFronts[frontIndex].grim_portents];
+        portents[portentIndex] = { ...portents[portentIndex], [field]: val };
         newFronts[frontIndex].grim_portents = portents;
-        updateField('fronts', newFronts);
+        
+        // Si es 'done', persistimos inmediatamente para UX rápida
+        if (field === 'done') {
+            persistChanges({ ...metadata, fronts: newFronts });
+        } else {
+            updateField('fronts', newFronts);
+        }
+    };
+
+    const addGrimPortent = (frontIndex: number) => {
+        const newFronts = [...(metadata.fronts || [])];
+        newFronts[frontIndex].grim_portents.push({ text: "", done: false });
+        persistChanges({ ...metadata, fronts: newFronts });
+    };
+
+    const removeGrimPortent = (frontIndex: number, portentIndex: number) => {
+        const newFronts = [...(metadata.fronts || [])];
+        newFronts[frontIndex].grim_portents.splice(portentIndex, 1);
+        persistChanges({ ...metadata, fronts: newFronts });
     };
 
     const setActiveSession = async (sessionId: string) => {
@@ -143,53 +172,45 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
         onClose();
     };
 
+    const handleCreateSession = async () => {
+        const newSession = await api.sessions.create(campaignId);
+        await loadData(); 
+        goToSession(newSession.id); 
+    };
+
+    const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm("¿Estás seguro de eliminar esta sesión? Todos los recursos vinculados volverán al Vault.")) {
+            await api.sessions.delete(campaignId, sessionId);
+            if (metadata.active_session === sessionId) {
+                 const newMeta = { ...metadata, active_session: null };
+                 setMetadata(newMeta);
+                 await api.campaigns.update(campaignId, newMeta);
+            }
+            loadData();
+        }
+    };
+
     return (
         <>
             {isOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}></div>}
             
             <div className={`fixed top-0 left-0 h-full w-96 bg-gray-900 border-r border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900">
-                    <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest">Info Campaña</h2>
+                    {/* Título de la campaña */}
+                    <h2 className="text-sm font-bold uppercase text-gray-400 tracking-widest truncate pr-4">{metadata?.title || "Campaña"}</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-white"><FontAwesomeIcon icon={faTimes} /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
                     <section>
                         <h3 className="text-xs font-bold text-yellow-500 uppercase mb-2">Core Concept</h3>
-                        <AutoResizeTextarea value={metadata?.elevator_pitch || ''} onChange={(e: any) => updateField('elevator_pitch', e.target.value)} onBlur={handleBlur} placeholder="El gancho principal..." className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-yellow-500/50 outline-none resize-none" />
+                        <AutoResizeTextarea value={metadata?.elevator_pitch || ''} onChange={(e: any) => updateField('elevator_pitch', e.target.value)} onBlur={handleBlur} placeholder="El gancho principal..." className="w-full bg-transparent border-b border-gray-800 hover:border-gray-700 focus:border-yellow-500 outline-none text-sm text-gray-300 resize-none" />
                     </section>
 
                     <section>
                         <h3 className="text-xs font-bold text-pink-500 uppercase mb-2">Moods</h3>
                         <MoodsEditor value={metadata?.moods || ''} onChange={(val) => { updateField('moods', val); persistChanges({...metadata, moods: val}); }} />
-                    </section>
-
-                    <section>
-                         <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xs font-bold text-red-500 uppercase">Fronts</h3>
-                            <button onClick={addFront} className="text-gray-500 hover:text-green-400"><FontAwesomeIcon icon={faPlus} size="xs"/></button>
-                        </div>
-                        <div className="space-y-4">
-                            {metadata?.fronts?.map((f: any, i: number) => (
-                                <div key={i} className="bg-gray-800/50 p-3 rounded border border-gray-700/50">
-                                    <div className="flex gap-2 mb-2 items-center">
-                                        <input value={f.name} onChange={(e) => updateFront(i, 'name', e.target.value)} onBlur={handleBlur} placeholder="Nombre Amenaza" className="bg-transparent border-b border-gray-600 w-full text-sm font-bold text-gray-200 focus:border-red-500 outline-none" />
-                                        <button onClick={() => removeFront(i)} className="text-gray-600 hover:text-red-500"><FontAwesomeIcon icon={faTrash} size="xs"/></button>
-                                    </div>
-                                    <input value={f.goal} onChange={(e) => updateFront(i, 'goal', e.target.value)} onBlur={handleBlur} placeholder="Objetivo..." className="bg-transparent w-full text-xs text-gray-400 focus:text-gray-200 outline-none mb-2 italic" />
-                                    
-                                    <div className="space-y-1 pl-2 border-l-2 border-red-900/30">
-                                        {(f.grim_portents || ["", "", ""]).map((gp: string, gpIndex: number) => (
-                                            <div key={gpIndex} className="flex items-center gap-2">
-                                                <FontAwesomeIcon icon={faSkull} className="text-[8px] text-red-800" />
-                                                <input value={gp} onChange={(e) => updateGrimPortent(i, gpIndex, e.target.value)} onBlur={handleBlur} placeholder={`Evento ${gpIndex + 1}`} className="bg-transparent w-full text-[10px] text-gray-300 outline-none hover:bg-gray-800/50 rounded px-1" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                            {(!metadata?.fronts || metadata.fronts.length === 0) && <p className="text-xs text-gray-600 italic">Sin frentes activos.</p>}
-                        </div>
                     </section>
 
                     <section>
@@ -204,8 +225,69 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                         </ul>
                     </section>
 
+                    <section>
+                         <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xs font-bold text-red-500 uppercase">Fronts</h3>
+                            <button onClick={addFront} className="text-gray-500 hover:text-green-400"><FontAwesomeIcon icon={faPlus} size="xs"/></button>
+                        </div>
+                        <div className="space-y-4">
+                            {metadata?.fronts?.map((f: any, i: number) => (
+                                <div key={i} className="bg-gray-800/50 p-3 rounded border border-gray-700/50 relative group/front">
+                                    <div className="flex gap-2 mb-2 items-center">
+                                        <input value={f.name} onChange={(e) => updateFront(i, 'name', e.target.value)} onBlur={handleBlur} placeholder="Nombre Amenaza" className="bg-transparent border-b border-gray-600 w-full text-sm font-bold text-gray-200 focus:border-red-500 outline-none" />
+                                        <button onClick={() => removeFront(i)} className="text-gray-600 hover:text-red-500"><FontAwesomeIcon icon={faTrash} size="xs"/></button>
+                                    </div>
+                                    <input value={f.goal} onChange={(e) => updateFront(i, 'goal', e.target.value)} onBlur={handleBlur} placeholder="Objetivo..." className="bg-transparent w-full text-xs text-gray-400 focus:text-gray-200 outline-none mb-2 italic" />
+                                    
+                                    <div className="space-y-1 pl-2 border-l-2 border-red-900/30">
+                                        {(f.grim_portents || []).map((gp: any, gpIndex: number) => (
+                                            <div key={gpIndex} className="flex items-center gap-2 group/portent mb-1">
+                                                {/* Botón de estado: Círculo sólido o CSS Border */}
+                                                <button 
+                                                    onClick={() => updateGrimPortent(i, gpIndex, 'done', !gp.done)}
+                                                    className={`flex-shrink-0 w-3 h-3 flex items-center justify-center outline-none ${gp.done ? 'text-red-800' : ''}`}
+                                                >
+                                                    {gp.done ? (
+                                                        <FontAwesomeIcon icon={faCircle} className="text-[10px]" />
+                                                    ) : (
+                                                        <div className="w-2.5 h-2.5 rounded-full border-2 border-gray-600 hover:border-red-500 transition-colors"></div>
+                                                    )}
+                                                </button>
+                                                
+                                                <input 
+                                                    value={gp.text || ''} 
+                                                    onChange={(e) => updateGrimPortent(i, gpIndex, 'text', e.target.value)} 
+                                                    onBlur={handleBlur} 
+                                                    placeholder={`Evento ${gpIndex + 1}`} 
+                                                    className={`bg-transparent w-full text-[10px] outline-none hover:bg-gray-800/50 rounded px-1 transition-colors ${gp.done ? 'line-through text-gray-500' : 'text-gray-300'}`} 
+                                                />
+                                                
+                                                {/* Botón borrar (solo para índices >= 3) */}
+                                                {gpIndex >= 3 && (
+                                                    <button onClick={() => removeGrimPortent(i, gpIndex)} className="text-gray-700 hover:text-red-500 opacity-0 group-hover/portent:opacity-100 transition-opacity">
+                                                        <FontAwesomeIcon icon={faTimes} size="xs"/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* Botón añadir evento discreto */}
+                                    <div className="flex justify-end mt-1">
+                                        <button onClick={() => addGrimPortent(i)} className="text-gray-600 hover:text-green-400 text-[10px] opacity-0 group-hover/front:opacity-100 transition-opacity px-2" title="Añadir Evento">
+                                            <FontAwesomeIcon icon={faPlus} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            {(!metadata?.fronts || metadata.fronts.length === 0) && <p className="text-xs text-gray-600 italic">Sin frentes activos.</p>}
+                        </div>
+                    </section>
+
                     <section className="pt-4 border-t border-gray-800">
-                         <h3 className="text-xs font-bold text-green-500 uppercase mb-3 flex items-center gap-2"><FontAwesomeIcon icon={faHistory} /> Cronología</h3>
+                         <div className="flex justify-between items-center mb-3">
+                             <h3 className="text-xs font-bold text-green-500 uppercase flex items-center gap-2"><FontAwesomeIcon icon={faHistory} /> Cronología</h3>
+                             <button onClick={handleCreateSession} className="text-gray-500 hover:text-green-400 text-xs"><FontAwesomeIcon icon={faPlus} /></button>
+                         </div>
                          <div className="space-y-2">
                             {sessions.length === 0 ? (
                                 <p className="text-xs text-gray-600 italic">No hay sesiones registradas.</p>
@@ -215,10 +297,22 @@ export default function CampaignSidebar({ isOpen, onClose, campaignId }: Campaig
                                     return (
                                         <div key={s.id} className="flex items-center justify-between group bg-gray-800/30 p-2 rounded border border-transparent hover:border-gray-700">
                                             <div className="cursor-pointer flex-1" onClick={() => goToSession(s.id)}>
-                                                <div className="text-xs font-bold text-gray-300 group-hover:text-green-400">Sesión #{s.number} {s.status === 'completed' && <span className="text-[9px] text-gray-500 font-normal">(Comp.)</span>}</div>
-                                                <div className="text-[10px] text-gray-500">{new Date(s.date).toLocaleDateString()}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-gray-300 group-hover:text-green-400">Sesión #{s.number}</span>
+                                                    {s.status === 'completed' && <span className="text-[9px] text-gray-500 font-normal border border-gray-700 px-1 rounded">Fin</span>}
+                                                </div>
+                                                <div className="text-[11px] text-gray-400 font-italic truncate">{s.title || "Sin título..."}</div>
+                                                <div className="text-[9px] text-gray-600">{new Date(s.date).toLocaleDateString()}</div>
                                             </div>
-                                            <button onClick={() => setActiveSession(s.id)} className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`} title={isActive ? "Sesión Activa" : "Marcar como Activa"}><FontAwesomeIcon icon={isActive ? faStar : faCheck} /></button>
+                                            
+                                            <div className="flex items-center gap-1">
+                                                <button onClick={() => setActiveSession(s.id)} className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`} title={isActive ? "Sesión Activa" : "Marcar como Activa"}>
+                                                    <FontAwesomeIcon icon={isActive ? faStar : faCheck} />
+                                                </button>
+                                                <button onClick={(e) => handleDeleteSession(s.id, e)} className="p-1.5 rounded text-gray-600 hover:bg-red-900/50 hover:text-red-400 transition-colors" title="Borrar Sesión">
+                                                    <FontAwesomeIcon icon={faTrash} size="xs"/>
+                                                </button>
+                                            </div>
                                         </div>
                                     );
                                 })

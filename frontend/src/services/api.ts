@@ -30,7 +30,7 @@ export const api = {
         }).then(res => res.json()),
         delete: (campaignId: string, itemId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/vault/${itemId}`, { method: 'DELETE' }).then(res => res.json())
     },
-    sessions: {
+   sessions: {
         list: (campaignId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions`).then(res => res.json()),
         create: (campaignId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions`, {
             method: 'POST',
@@ -42,6 +42,7 @@ export const api = {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
-        }).then(res => res.json())
+        }).then(res => res.json()),
+        delete: (campaignId: string, sessionId: string) => fetch(`${API_BASE_URL}/campaigns/${campaignId}/sessions/${sessionId}`, { method: 'DELETE' }).then(res => res.json())
     }
 };

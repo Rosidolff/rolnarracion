@@ -66,24 +66,21 @@ export default function TopNavBar({
                     <button key={type} onClick={() => onTabChange(type)} className={`col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ${activeTab === type ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>{type}s</button>
                 ))}
                 
-                {/* Buscador + Filtros + Añadir */}
                 <div className="col-span-full sm:col-span-3 relative h-full max-h-[1.5rem] flex gap-1">
                     
-                    {/* Botón Filtros (Solo si no es 'all') */}
-                    {onToggleFilters && activeTab !== 'all' && !extraTabs.length && (
+                    {onToggleFilters && !extraTabs.length && (
                         <button onClick={onToggleFilters} className={`h-full aspect-square rounded flex items-center justify-center transition-colors border ${showFilters ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`} title="Filtros">
                             <FontAwesomeIcon icon={faFilter} size="xs" />
                         </button>
                     )}
 
-                    {/* Desplegable Filtros */}
-                    {showFilters && activeTab !== 'all' && (
+                    {showFilters && !extraTabs.length && (
                         <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-xl p-2 flex gap-2 z-50">
                             <select value={filterStatus} onChange={(e) => onFilterStatusChange && onFilterStatusChange(e.target.value)} className="bg-gray-900 border border-gray-600 text-[10px] rounded px-2 py-1 text-white outline-none cursor-pointer hover:border-blue-500">
                                 <option value="all">Estado: Todos</option>
                                 <option value="new">Nuevos</option>
                                 <option value="used">Utilizados</option>
-                                <option value="burned">Quemados</option>
+                                {/* Opción 'burned' ELIMINADA visualmente del select */}
                             </select>
                             {activeTab === 'scene' && (
                                 <select value={filterSub} onChange={(e) => onFilterSubChange && onFilterSubChange(e.target.value)} className="bg-gray-900 border border-gray-600 text-[10px] rounded px-2 py-1 text-white outline-none cursor-pointer hover:border-blue-500">

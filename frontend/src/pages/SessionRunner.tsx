@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { api } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-    faCheck, faLink, faTimes, faChevronDown, faChevronRight, faSave, faPlus, faUnlink, faBolt, faBookOpen, faPen, faFire, faRecycle, faStar
+    faCheck, faLink, faTimes, faChevronDown, faChevronRight, faSave, faPlus, faUnlink, faBolt, faBookOpen, faPen
 } from '@fortawesome/free-solid-svg-icons';
 import TopNavBar from '../components/TopNavBar';
 import CampaignSidebar from '../components/CampaignSidebar';
@@ -48,7 +48,7 @@ export default function SessionRunner() {
             loadVault();
             initSession();
         }
-    }, [id, location.state]); // Recargar si cambia el state (navegación desde sidebar)
+    }, [id, location.state]);
 
     useEffect(() => {
         const handleClickOutside = async (event: MouseEvent) => {
@@ -132,14 +132,11 @@ export default function SessionRunner() {
                 finalLinkedItems.push(itemId);
                 const isReusable = REUSABLE_TYPES.includes(item.type);
                 const newUsage = (item.usage_count || 0) + 1;
-                
-                // Actualizar en Vault
                 await api.vault.update(id, itemId, { 
                     status: isReusable ? 'reserve' : 'archived', 
                     usage_count: newUsage 
                 });
             } else {
-                // Desvincular (volver a reserva)
                 await api.vault.update(id, itemId, { status: 'reserve' });
             }
         }
@@ -153,7 +150,6 @@ export default function SessionRunner() {
         
         await api.sessions.update(id, session.id, finalSession);
         
-        // Crear nueva si no era una pasada
         if (session.status !== 'completed') {
             const newS = await api.sessions.create(id);
             setSession(newS);
@@ -204,18 +200,11 @@ export default function SessionRunner() {
         }
     };
 
-    const getItemStatus = (item: any) => {
-        if (item.status === 'archived') return 'burned';
-        if ((item.usage_count || 0) > 0) return 'used';
-        return 'new';
-    };
-
     const renderItemRow = (item: any) => {
         const isEditing = editingId === item.id;
         const isUsed = usedItems.has(item.id);
         const isExpanded = expandedItems[item.id];
         const name = item.content.name || item.content.title || "Sin nombre";
-        const status = getItemStatus(item);
 
         if (isEditing) {
             return (
@@ -232,7 +221,7 @@ export default function SessionRunner() {
             );
         }
 
-        const rowBg = isUsed ? 'bg-amber-900/20 border-l-2 border-amber-500' : 'hover:bg-gray-750';
+        const rowBg = isUsed ? 'bg-amber-900/20 border-l-2 border-amber-600' : 'hover:bg-gray-750 border-l-2 border-transparent';
         
         return (
             <div key={item.id} className={`border-b border-gray-800 last:border-0 transition-colors ${rowBg}`}>
@@ -252,9 +241,6 @@ export default function SessionRunner() {
                     </div>
 
                     <div className="flex-shrink-0 flex items-center gap-2">
-                        {status === 'burned' && <span className="text-[9px] bg-red-900/50 text-red-300 px-1 py-0 rounded uppercase font-bold tracking-wider">QUEMADO</span>}
-                        {status === 'used' && <span className="text-[9px] bg-blue-900/50 text-blue-300 px-1 py-0 rounded uppercase font-bold tracking-wider">USADO</span>}
-                        {status === 'new' && <span className="text-[9px] bg-yellow-900/50 text-yellow-300 px-1 py-0 rounded uppercase font-bold tracking-wider">NUEVO</span>}
                         <button onClick={() => toggleLinkItem(item.id)} className="text-gray-600 hover:text-red-400 p-1" title="Desvincular"><FontAwesomeIcon icon={faUnlink} size="xs" /></button>
                     </div>
                 </div>
@@ -293,10 +279,19 @@ export default function SessionRunner() {
             )}
             {id && <CampaignSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} campaignId={id} />}
 
-            <div className="h-10 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    <span className="font-bold text-green-400 text-sm">Sesión #{session.number}</span>
-                    <span className="text-xs text-gray-500">{new Date(session.date).toLocaleDateString()}</span>
+            <div className="h-12 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4 flex-shrink-0">
+                <div className="flex items-center gap-3 flex-1">
+                    <span className="font-bold text-green-400 text-sm whitespace-nowrap">Sesión #{session.number}</span>
+                    <span className="text-gray-600">|</span>
+                    <input 
+                        type="text" 
+                        value={session.title || ''} 
+                        onChange={(e) => updateField('title', e.target.value)} 
+                        onBlur={() => saveSession()}
+                        placeholder="Título de la sesión (ej: Campamento Goblin)"
+                        className="bg-transparent text-sm text-white placeholder-gray-600 focus:placeholder-gray-500 outline-none w-full max-w-md border-b border-transparent hover:border-gray-600 focus:border-green-500 transition-colors"
+                    />
+                    <span className="text-xs text-gray-500 whitespace-nowrap ml-auto mr-4">{new Date(session.date).toLocaleDateString()}</span>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => setIsLinking(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded font-bold flex items-center gap-2"><FontAwesomeIcon icon={faLink} /> Recursos</button>
