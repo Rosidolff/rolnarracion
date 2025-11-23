@@ -76,23 +76,23 @@ export default function TopNavBar({
                     const isChar = type === 'character';
                     const isActive = activeTab === type;
                     
-                    // Lógica de clases dinámica
                     let baseClasses = "col-span-1 flex items-center justify-center text-[10px] font-bold uppercase rounded border transition-colors h-full max-h-[1.5rem] truncate ";
                     
                     if (isActive) {
+                        // Activo: Azul estándar vs Naranja quemado (menos chillón)
                         baseClasses += isChar 
-                            ? 'bg-orange-600 border-orange-500 text-white' 
+                            ? 'bg-orange-700 border-orange-600 text-white' 
                             : 'bg-blue-600 border-blue-500 text-white';
                     } else {
-                        // AQUÍ CAMBIAMOS: Si es character y no está activo, texto naranja
+                        // Inactivo: Gris estándar vs Gris anaranjado sutil
                         baseClasses += isChar 
-                            ? 'bg-gray-800 border-gray-700 text-orange-500 hover:bg-gray-700 hover:text-orange-400' 
+                            ? 'bg-orange-900/20 border-orange-900/30 text-gray-300 hover:bg-orange-900/40 hover:text-white' 
                             : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white';
                     }
 
                     return (
                         <button key={type} onClick={() => onTabChange(type)} className={baseClasses}>
-                            {isChar && <FontAwesomeIcon icon={faUser} className="mr-1" />}
+                            {isChar && <FontAwesomeIcon icon={faUser} className="mr-1 opacity-70" />}
                             {TYPE_LABELS[type]}
                         </button>
                     );
